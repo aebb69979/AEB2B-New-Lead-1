@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Leads</title>
+<!--
+  Cloudflare Pages shell for the AE lead app.
+
+  Community Cloud only serves *.streamlit.app and supports a custom subdomain but
+  not a custom domain, so this masks the app in a full-bleed iframe instead of
+  redirecting. The address bar keeps showing this domain while Streamlit serves
+  the app. ?embed=true is Streamlit's documented embedding parameter and works
+  only because the Community Cloud app is public.
+
+  It does two jobs beyond cosmetics:
+
+  1. FORWARDS QUERY PARAMS. The iframe src is fixed, so anything on this page's
+     URL would never reach the app. Without this an auth link opened here would
+     silently fail to sign anyone in.
+
+  2. CARRIES THE SESSION. The iframe is cross-origin, so a cookie set inside it
+     is third-party and gets blocked or partitioned by every major browser, and
+     Streamlit's session_state dies on a refresh. This page's own localStorage is
+     first-party and is the one durable place available. The app posts its token
+     up; we store it and replay it as ?s= on the next load.
+
+  DEPLOY NOTE: this folder is uploaded to Cloudflare Pages by hand, not through
+  the Git integration. The repo copy and the live copy are NOT linked. Edit this
+  file, commit it, and the live shell keeps serving the old version until someone
+  re-uploads. Nothing warns you, and "the sign-in link is broken" looks exactly
+  like a code bug. The version string below is rendered into the page so the live
+  build is identifiable.
+-->
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#fff; }
+  /* The frame is taller than the window and the body clips, which pushes
+     Community Cloud's "Built with Streamlit" badge out of view. It is
+     cross-origin so it cannot be selected or styled away. Raise --badge-crop if
+     a sliver ever reappears. */
+  :root { --badge-crop: 3rem; }
+  #frame {
+    display:block; border:0; width:100%;
+    height:calc(100% + var(--badge-crop));
+  }
+  #boot {
+    position:fixed; inset:0; display:grid; place-items:center;
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; color:#5f6f77;
+  }
+  @media (prefers-color-scheme: dark) { html, body { background:#0e1418; } #boot { color:#93a3ab; } }
+</style>
+</head>
+<body>
+<div id="boot">Loading…</div>
+<iframe id="frame" title="Leads" allow="clipboard-write"
+        referrerpolicy="no-referrer"></iframe>
+
+<script>
+(function () {
+  "use strict";
+  var APP     = "https://CHANGE-ME.streamlit.app/";   // <- the Community Cloud URL
+  var KEY     = "m1.session";
+  var VERSION = "shell-1";
+
+  function readStored() {
+    try { return window.localStorage.getItem(KEY) || ""; } catch (e) { return ""; }
+  }
+  function store(token) {
+    try {
+      if (token) window.localStorage.setItem(KEY, token);
+      else window.localStorage.removeItem(KEY);
+    } catch (e) { /* private mode, storage disabled — sign-in just won't persist */ }
+  }
+
+  // Build the iframe URL: the app, plus whatever is on OUR url, plus the token.
+  var src = new URL(APP);
+  src.searchParams.set("embed", "true");
+  new URLSearchParams(window.location.search).forEach(function (v, k) {
+    src.searchParams.set(k, v);
+  });
+  if (!src.searchParams.get("s")) {
+    var saved = readStored();
+    if (saved) src.searchParams.set("s", saved);
+  }
+
+  var frame = document.getElementById("frame");
+  frame.addEventListener("load", function () {
+    var boot = document.getElementById("boot");
+    if (boot) boot.remove();
+  });
+  frame.src = src.toString();
+
+  // The app posts its session token up whenever it changes.
+  window.addEventListener("message", function (ev) {
+    if (new URL(APP).origin !== ev.origin) return;          // only from our app
+    var d = ev.data;
+    if (!d || d.type !== "m1-session") return;
+    store(typeof d.token === "string" && d.token ? d.token : null);
+  }, false);
+
+  // A token on our URL is a one-time hand-off; keep it out of history and out of
+  // anything the AE might copy and forward.
+  if (new URLSearchParams(window.location.search).get("s")) {
+    try { history.replaceState(null, "", window.location.pathname); } catch (e) {}
+  }
+  document.documentElement.setAttribute("data-shell", VERSION);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+#!/bin/sh
+# Refuse to commit data or credentials to a public repo.
+#
+# .gitignore covers the predictable cases. This catches the ones that get past
+# it: a file added with `git add -f`, a key pasted into a .py, a CSV renamed to
+# something innocuous. In a public repo the mistake cannot be taken back, so the
+# check is a hard block rather than a warning.
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+fail=0
+
+for f in $staged; do
+  case "$f" in
+    *.csv|*.xlsx|*.parquet)
+      echo "BLOCKED  $f  — data file"; fail=1 ;;
+    .streamlit/secrets.toml|*.local_accounts.json)
+      echo "BLOCKED  $f  — secrets"; fail=1 ;;
+  esac
+  [ -f "$f" ] || continue
+  # a real service-account key, as opposed to the placeholder template
+  if grep -qE 'BEGIN (RSA )?PRIVATE KEY' "$f" 2>/dev/null && ! grep -q 'REPLACE' "$f" 2>/dev/null; then
+    echo "BLOCKED  $f  — contains a private key"; fail=1
+  fi
+  if grep -qE '"type": *"service_account"' "$f" 2>/dev/null && ! grep -q 'REPLACE' "$f" 2>/dev/null; then
+    echo "BLOCKED  $f  — service-account key JSON"; fail=1
+  fi
+  # 13-digit Thai juristic ids in bulk = a lead extract by another name
+  # grep -c prints 0 AND exits 1 when there is no match, so a `|| echo 0`
+  # fallback yields "0\n0" and breaks the comparison. Count through wc instead,
+  # whose exit status is the pipeline's.
+  ids=$(grep -oE '\b0[0-9]{12}\b' "$f" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${ids:-0}" -gt 20 ]; then
+    echo "BLOCKED  $f  — looks like company registration numbers"; fail=1
+  fi
+  sz=$(wc -c < "$f" 2>/dev/null || echo 0)
+  if [ "$sz" -gt 1000000 ]; then
+    echo "BLOCKED  $f  — ${sz} bytes; nothing here should be that large"; fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "This repository is public. Commit refused."
+  echo "If you are certain, bypass with:  git commit --no-verify"
+  exit 1
+fi
+exit 0

@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+# This repo is PUBLIC. Nothing here may contain data or credentials.
+#
+# The app's security does not depend on the source being secret — it rests on
+# the pepper, the session secret, bcrypt, the domain allowlist and the lockout,
+# all of which live in Streamlit's secrets manager. But a file committed here is
+# public instantly and permanently: deleting it later does not remove it from
+# git history, and it may already be cloned or indexed.
+#
+# install-hooks.sh adds a pre-commit hook that enforces most of this.
+# ---------------------------------------------------------------------------
+
+# Credentials
+.streamlit/secrets.toml
+*service_account*.json
+*-key.json
+*credentials*.json
+
+# Anything that looks like pipeline data
+*.csv
+*.xlsx
+*.parquet
+m1_run/
+m*_run/
+.local_accounts.json
+
+# Editor / build noise
+__pycache__/
+*.pyc
+*.bak
+*.premonths
+*.pre*
+.DS_Store
+.venv/
