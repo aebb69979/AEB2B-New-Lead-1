@@ -30,6 +30,8 @@ import uuid
 from pathlib import Path
 from typing import Protocol
 
+from . import timefmt
+
 # Mirrors m1_pipeline.call_sheets. The app ships in its own repo and cannot
 # import the pipeline, so these are duplicated deliberately -- they must stay
 # identical or app-logged and workbook-logged rows will not pool.
@@ -63,7 +65,7 @@ def new_row(lead_id: str, ae_id: str, ae_email: str, batch: str, attempt_seq: in
         "row_uuid": row_uuid or str(uuid.uuid4()),
         "lead_id": lead_id, "ae_id": str(ae_id), "ae_email": ae_email,
         "batch": batch, "attempt_seq": int(attempt_seq),
-        "logged_at": f"{time.time():.0f}",
+        "logged_at": timefmt.stamp(),
         "called_at_reported": called_at_reported,
         "channel": channel, "disposition": disposition,
         "interest_outcome": interest_outcome, "notes": notes,
@@ -168,7 +170,7 @@ def latest_attempts(rows: list[dict], lead_id: str | None = None) -> list[dict]:
             continue
         key = (str(r.get("lead_id")), str(r.get("attempt_seq")))
         prev = best.get(key)
-        if prev is None or float(r.get("logged_at") or 0) >= float(prev.get("logged_at") or 0):
+        if prev is None or timefmt.parse(r.get("logged_at")) >= timefmt.parse(prev.get("logged_at")):
             best[key] = r
     return sorted(best.values(), key=lambda r: (str(r.get("lead_id")),
                                                 int(r.get("attempt_seq") or 0)))
@@ -204,7 +206,7 @@ def lead_progress(rows: list[dict], lead_ids: list[str],
             "connected": connected,
             "floor_met": bool(connected or n >= floor),
             "last_disposition": str(last.get("disposition")) if last else "",
-            "last_logged_at": float(last.get("logged_at") or 0) if last else 0.0,
+            "last_logged_at": timefmt.parse(last.get("logged_at")) if last else 0.0,
             "interest": str(last.get("interest_outcome")) if last else "",
         }
     return out

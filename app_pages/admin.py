@@ -5,6 +5,7 @@ import streamlit as st
 from utils import accounts as acc
 from utils import bootstrap as boot
 from utils import identity as idy
+from utils import timefmt as tf
 from utils.store import APPROVED, DISABLED, PENDING
 
 store = boot.get_store()
@@ -46,7 +47,13 @@ if records:
     t = pd.DataFrame(records)
     now = pd.Timestamp.now().timestamp()
     t["locked"] = [idy.is_locked(x, now)[0] for x in t.get("locked_until", "")]
+    # Rendered through timefmt so rows written before these became readable
+    # still show a date rather than a ten-digit number.
+    for c in ("created_at", "approved_at"):
+        if c in t.columns:
+            t[c] = [tf.human(x) for x in t[c]]
     cols = [c for c in ("email", "display_name", "ae_id", "status",
+                        "created_at", "approved_at",
                         "failed_attempts", "locked") if c in t.columns]
     st.dataframe(t[cols], hide_index=True, width="stretch")
 

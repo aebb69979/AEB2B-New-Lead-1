@@ -16,6 +16,7 @@ from __future__ import annotations
 import time
 
 from . import identity as idy
+from . import timefmt
 from .store import APPROVED, DISABLED, PENDING, IdentityStore, blank_record
 
 
@@ -62,7 +63,7 @@ def sign_up(store: IdentityStore, email: str, password: str, pepper: str,
                        idy.new_nonce(), display_name.strip())
     if e in {str(a).strip().lower() for a in admin_emails}:
         rec["status"] = APPROVED
-        rec["approved_at"] = f"{time.time():.0f}"
+        rec["approved_at"] = timefmt.text()
         store.create(rec)
         return Result(True, "Administrator account created. You can sign in now.",
                       "created_admin")
@@ -145,7 +146,7 @@ def approve(store: IdentityStore, email: str, ae_id: str) -> Result:
     if not str(ae_id).strip():
         return Result(False, "Assign a territory (ae_id) when approving.", "no_ae_id")
     store.update(e, status=APPROVED, ae_id=str(ae_id).strip(),
-                 approved_at=f"{time.time():.0f}", failed_attempts=0, locked_until="")
+                 approved_at=timefmt.text(), failed_attempts=0, locked_until="")
     return Result(True, f"Approved {e} as {ae_id}.", "approved")
 
 

@@ -13,6 +13,8 @@ from __future__ import annotations
 import time
 from typing import Protocol
 
+from . import timefmt
+
 COLUMNS = [
     "email", "ae_id", "display_name", "password_hash", "status",
     "created_at", "approved_at", "failed_attempts", "locked_until",
@@ -26,7 +28,7 @@ def blank_record(email: str, password_hash: str, nonce: str,
     return {
         "email": email, "ae_id": "", "display_name": display_name,
         "password_hash": password_hash, "status": PENDING,
-        "created_at": f"{time.time():.0f}", "approved_at": "",
+        "created_at": timefmt.text(), "approved_at": "",
         "failed_attempts": "0", "locked_until": "", "session_nonce": nonce,
     }
 

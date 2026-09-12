@@ -17,6 +17,7 @@ import streamlit as st
 
 from utils import bootstrap as boot
 from utils import calllog as cl
+from utils import timefmt as tf
 from utils import view as V
 
 ctx = V.current()
@@ -160,10 +161,13 @@ st.progress(min(done / cl.MIN_ATTEMPTS, 1.0))
 
 if history:
     st.dataframe(
+        # "Called" is what the AE typed; "Logged" is server-stamped. Showing
+        # both is the point -- the gap between them is measurable rather than
+        # assumed, which is what the shared spreadsheet could never give.
         [{"#": h["attempt_seq"], "Called": h.get("called_at_reported", ""),
           "Channel": h.get("channel", ""), "Outcome": h.get("disposition", ""),
           "Interest": h.get("interest_outcome", ""), "Notes": h.get("notes", ""),
-          "Logged by": h.get("ae_email", "")}
+          "Logged": tf.human(h.get("logged_at")), "Logged by": h.get("ae_email", "")}
          for h in history],
         hide_index=True, width="stretch",
         column_config={"Notes": st.column_config.TextColumn(width="large")})
