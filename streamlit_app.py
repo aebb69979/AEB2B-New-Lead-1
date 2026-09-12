@@ -7,9 +7,15 @@ The app URL is public — Community Cloud's viewer restriction only understands
 Google accounts and these AEs are on Outlook — so the sign-in below is the only
 thing between the internet and the lead data.
 
-Step 3 of the build: identity and a read-only lead view. Nothing writes yet, on
-purpose: an attempt logged against the wrong ae_id would be worse than no
-attempt logged at all, so isolation gets proven before anything can be created.
+Two sections. Summary is the batch at a glance with per-lead progress;
+Per-company is one company at a time, in full, with the call-logging form. The
+batch selector sits in the sidebar rather than on either page, because both
+sections must always be looking at the same month -- otherwise an AE could log
+a call against a company they were reading in a different batch.
+
+Every write carries the ae_id from the verified session record, never from a
+request parameter: an attempt logged against the wrong ae_id would be worse
+than no attempt logged at all.
 """
 from __future__ import annotations
 
@@ -127,11 +133,15 @@ st.session_state["account"] = account
 _bridge(_token())      # refresh the shell's copy
 is_admin = str(account["email"]).lower() in boot.admin_emails()
 
-pages = [st.Page("app_pages/my_leads.py", title="My leads", icon=":material/list:",
-                 default=True)]
+pages = {
+    "Summary": [st.Page("app_pages/my_leads.py", title="My leads",
+                        icon=":material/list:", default=True)],
+    "Per-company": [st.Page("app_pages/per_company.py", title="Company view",
+                            icon=":material/apartment:")],
+}
 if is_admin:
-    pages.append(st.Page("app_pages/admin.py", title="Admin",
-                         icon=":material/admin_panel_settings:"))
+    pages["Admin"] = [st.Page("app_pages/admin.py", title="Accounts",
+                              icon=":material/admin_panel_settings:")]
 
 with st.sidebar:
     st.subheader(account.get("display_name") or account["email"])
@@ -139,9 +149,35 @@ with st.sidebar:
     st.caption("Territory " + (", ".join(_ids) if _ids else "— none assigned"))
     if is_admin:
         st.caption(":material/shield: Administrator")
+
+    # Newest first, and the newest is the default. Earlier months stay available
+    # so a batch does not disappear from under an AE the moment the next one is
+    # published -- unfinished work would go with it.
+    _months = boot.get_months()
+    if _months:
+        _labels = boot.month_options(_months)
+        _ids_m = [m["id"] for m in _months]
+        _prev = st.session_state.get("picked_month")
+        _default = _prev if _prev in _ids_m else _ids_m[0]
+        _pick = st.selectbox("Batch", _ids_m, index=_ids_m.index(_default),
+                             format_func=lambda i: _labels[i], key="month_select")
+        # `_prev is not None` matters: on the first run of a session there is no
+        # previous month, and treating that as a change would reset the position
+        # and strip `?lead=` from the URL -- which is exactly the case a shared
+        # or reloaded deep link arrives in.
+        if _prev is not None and _pick != _prev:
+            # A lead_id belongs to one batch; carrying the position across would
+            # land on the wrong company or on nothing at all.
+            st.session_state["picked_month"] = _pick
+            st.session_state["lead_ix"] = 0
+            st.session_state.pop("lead_jump", None)
+            st.session_state.pop("_lead_deeplinked", None)
+            st.query_params.pop("lead", None)
+        st.session_state["picked_month"] = _pick
+
     if st.button("Sign out", icon=":material/logout:", width="stretch"):
         _sign_out()
         st.rerun()
 
-nav = st.navigation(pages, position="top" if is_admin else "hidden")
+nav = st.navigation(pages)
 nav.run()

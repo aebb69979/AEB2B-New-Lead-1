@@ -23,6 +23,7 @@
 m1_run/
 m*_run/
 .local_accounts.json
+.local_call_log.json
 
 # Editor / build noise
 __pycache__/

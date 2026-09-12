@@ -20,16 +20,62 @@ import streamlit as st
 from .store import COLUMNS, MemoryIdentityStore, SheetsIdentityStore, ensure_header
 
 LOCAL_ACCOUNTS = Path(".local_accounts.json")
-LOCAL_SNAPSHOT_GLOB = "m1_run/output/m*_leads_*.csv"
+SNAPSHOT_GLOB = "m*_leads_*.csv"
+
+# Local mode reads snapshots off disk, and where they are depends on where the
+# app was launched from. Rather than demand one working directory, look in the
+# places they actually live: beside the app, in the project root, or one level
+# up from either. Cloud mode never touches this.
+LOCAL_SNAPSHOT_DIRS = [
+    Path("m1_run/output"),                 # launched from the project root
+    Path("../m1_run/output"),              # launched from app_ae/
+    Path(__file__).resolve().parent.parent.parent / "m1_run" / "output",
+]
+
+
+def local_snapshots() -> list[Path]:
+    """Every snapshot on disk, newest name first, wherever it lives."""
+    seen, out = set(), []
+    for d in LOCAL_SNAPSHOT_DIRS:
+        try:
+            files = sorted(d.glob(SNAPSHOT_GLOB), reverse=True)
+        except OSError:
+            continue
+        for f in files:
+            key = f.resolve()
+            if key not in seen:
+                seen.add(key)
+                out.append(f)
+    return out
+
+
+# Streamlit looks for secrets.toml under the CURRENT WORKING DIRECTORY, not
+# beside the script. Launching from the project root -- `streamlit run
+# app_ae/streamlit_app.py`, which is what the README says -- therefore finds
+# nothing, and the symptom is an app with no Admin page and no way to approve
+# anyone. So fall back to the file that ships with the app.
+APP_SECRETS = Path(__file__).resolve().parent.parent / ".streamlit" / "secrets.toml"
+
+
+@st.cache_resource(show_spinner=False)
+def _file_secrets() -> dict:
+    try:
+        import tomllib
+        with APP_SECRETS.open("rb") as fh:
+            return tomllib.load(fh)
+    except Exception:                                      # noqa: BLE001
+        return {}
 
 
 def secret(name: str, default=None):
     """A secret, or a default. `st.secrets` raises when the file is absent, which
     would make local mode impossible."""
     try:
-        return st.secrets.get(name, default)
+        if name in st.secrets:
+            return st.secrets[name]
     except Exception:                                      # noqa: BLE001
-        return default
+        pass
+    return _file_secrets().get(name, default)
 
 
 def has_cloud() -> bool:
@@ -148,7 +194,7 @@ def get_months() -> list[dict]:
     from . import leads as L
     if not has_cloud():
         out = []
-        for f in sorted(Path(".").glob(LOCAL_SNAPSHOT_GLOB), reverse=True):
+        for f in local_snapshots():
             k = L.snapshot_sort_key(f.name)
             if k:
                 out.append({"id": str(f), "name": f.name, "month": k[0],
@@ -202,6 +248,51 @@ def setup_problems() -> list[str]:
             out.append("`password_pepper` is still the development value.")
         if session_secret().startswith("dev-only"):
             out.append("`session_secret` is still the development value.")
+        if not call_log_sheet_id():
+            out.append("`call_log_sheet_id` is not set — AEs can see leads but "
+                       "cannot log calls. Create a separate spreadsheet (not the "
+                       "identity one, which holds password hashes), share it with "
+                       "the service account as Editor, and add its id.")
     if not admin_emails():
         out.append("`admin_emails` is empty — nobody can approve accounts.")
     return out
+
+
+# --------------------------------------------------------------------------
+# the call log
+# --------------------------------------------------------------------------
+LOCAL_CALL_LOG = Path(".local_call_log.json")
+
+
+def call_log_sheet_id() -> str:
+    """Deliberately NOT defaulted to `identity_sheet_id`.
+
+    The identity sheet holds password hashes. The call log is analysis data and
+    will be shared with whoever runs the analysis. Falling back to one sheet
+    would quietly hand out the hashes with it, so an unset id disables logging
+    instead -- loud and safe rather than silent and wrong.
+    """
+    return str(secret("call_log_sheet_id", "") or "")
+
+
+def call_log_available() -> bool:
+    return (not has_cloud()) or bool(call_log_sheet_id())
+
+
+@st.cache_resource(show_spinner=False)
+def get_call_log():
+    """Append-only attempt log. None when cloud mode has no sheet configured."""
+    from .calllog import LOG_COLUMNS, LocalCallLog, SheetsCallLog, ensure_header as _hdr
+    if not has_cloud():
+        return LocalCallLog(LOCAL_CALL_LOG)
+    if not call_log_sheet_id():
+        return None
+    import gspread
+    gc = gspread.service_account_from_dict(dict(secret("gcp_service_account")))
+    sh = gc.open_by_key(call_log_sheet_id())
+    try:
+        ws = sh.worksheet("call_log")
+    except Exception:                                      # noqa: BLE001
+        ws = sh.add_worksheet("call_log", rows=5000, cols=len(LOG_COLUMNS))
+    _hdr(ws)
+    return SheetsCallLog(ws)

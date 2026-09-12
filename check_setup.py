@@ -1,6 +1,7 @@
 """Preflight: does the Google setup actually work?
 
-    python check_setup.py <service-account-key.json> <drive_folder_id> [identity_sheet_id]
+    python check_setup.py <service-account-key.json> <drive_folder_id> \
+                          [identity_sheet_id] [call_log_sheet_id]
 
 Run this after steps 2-4 of the setup guide and before deploying. Every failure
 it reports is one you would otherwise meet as a blank page at step 8, where the
@@ -23,7 +24,8 @@ FOLDER_MIME = "application/vnd.google-apps.folder"
 SHEET_MIME = "application/vnd.google-apps.spreadsheet"
 
 
-def main(key_path: str, folder_id: str, sheet_id: str | None = None) -> int:
+def main(key_path: str, folder_id: str, sheet_id: str | None = None,
+         log_sheet_id: str | None = None) -> int:
     try:
         info = json.loads(open(key_path, encoding="utf-8").read())
     except (OSError, json.JSONDecodeError) as e:
@@ -112,32 +114,49 @@ def main(key_path: str, folder_id: str, sheet_id: str | None = None) -> int:
         print("       is shared as Viewer and may later be shared with an analyst.")
         print("       Move it out — a sibling of this folder is fine.")
 
-    # ---- the identity sheet ------------------------------------------------
-    if sheet_id:
-        print("\n--- identity sheet ---")
-        r = sess.get(f"https://www.googleapis.com/drive/v3/files/{sheet_id}",
+    # ---- the two sheets ----------------------------------------------------
+    def writable_sheet(sid: str, title: str, stores: str) -> int:
+        print(f"\n--- {title} ---")
+        r = sess.get(f"https://www.googleapis.com/drive/v3/files/{sid}",
                      params={"fields": "id,name,mimeType,capabilities/canEdit",
                              "supportsAllDrives": True})
         if r.status_code == 404:
             print(f"{BAD} not found, or not shared with {robot}")
-            failures += 1
-        else:
-            r.raise_for_status()
-            m = r.json()
-            print(f"{OK} reachable: {m['name']!r}")
-            if m.get("mimeType") != SHEET_MIME:
-                print(f"{BAD} not a Google Sheet — it is {m.get('mimeType')}")
-                print("       A .xlsx uploaded to Drive is not the same thing;")
-                print("       open it and use File > Save as Google Sheets.")
-                failures += 1
-            elif not m.get("capabilities", {}).get("canEdit"):
-                print(f"{BAD} shared as Viewer — accounts cannot be written")
-                print("       Re-share with the service account as EDITOR.")
-                failures += 1
-            else:
-                print(f"{OK} writable — accounts can be stored")
+            return 1
+        r.raise_for_status()
+        m = r.json()
+        print(f"{OK} reachable: {m['name']!r}")
+        if m.get("mimeType") != SHEET_MIME:
+            print(f"{BAD} not a Google Sheet — it is {m.get('mimeType')}")
+            print("       A .xlsx uploaded to Drive is not the same thing;")
+            print("       open it and use File > Save as Google Sheets.")
+            return 1
+        if not m.get("capabilities", {}).get("canEdit"):
+            print(f"{BAD} shared as Viewer — {stores} cannot be written")
+            print("       Re-share with the service account as EDITOR.")
+            return 1
+        print(f"{OK} writable — {stores} can be stored")
+        return 0
+
+    if sheet_id:
+        failures += writable_sheet(sheet_id, "identity sheet", "accounts")
     else:
         print(f"\n{WARN} no identity_sheet_id given; skipping that check")
+
+    if log_sheet_id:
+        failures += writable_sheet(log_sheet_id, "call log sheet", "call attempts")
+        if sheet_id and log_sheet_id == sheet_id:
+            # The call log is analysis data and gets shared onward; the identity
+            # sheet holds password hashes. One id for both hands the hashes to
+            # whoever reads the calls.
+            print(f"{BAD} same spreadsheet as the identity sheet.")
+            print("       The call log will be shared with whoever runs the")
+            print("       analysis, and the identity sheet holds password hashes.")
+            print("       Use a SEPARATE spreadsheet for the call log.")
+            failures += 1
+    else:
+        print(f"\n{WARN} no call_log_sheet_id given — AEs will see leads but "
+              f"cannot log calls.")
 
     print()
     if failures:
@@ -150,4 +169,4 @@ def main(key_path: str, folder_id: str, sheet_id: str | None = None) -> int:
 if len(sys.argv) < 3:
     print(__doc__)
     raise SystemExit(2)
-raise SystemExit(main(*sys.argv[1:4]))
+raise SystemExit(main(*sys.argv[1:5]))
