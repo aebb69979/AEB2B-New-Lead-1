@@ -83,7 +83,10 @@ def batch_state(generated: str, today: dt.date | None = None,
         "known": True, "issued": issued, "freeze": freeze, "age_days": age,
         "days_left": left, "phase": phase, "closed": age >= window,
         "past_checkpoint": age >= CHECKPOINT_DAY,
-        "label": (f"closed {freeze:%-d %b}" if age >= window
+        # %-d (no zero padding) is a glibc/BSD extension, not in the C standard
+        # and absent on Windows. Strip the pad by hand so the label does not
+        # depend on which platform the app happens to be deployed to.
+        "label": (f"closed {freeze.day} {freeze:%b}" if age >= window
                   else f"{left} day{'s' if left != 1 else ''} left"),
     }
 
