@@ -20,6 +20,26 @@ from utils import calllog as cl
 from utils import timefmt as tf
 from utils import view as V
 
+
+def _position(raw, count: int) -> int:
+    """Whatever session_state holds, clamped to a row that exists.
+
+    A bare int() here took the whole page down with a ValueError. session_state
+    outlives a redeploy: a browser tab open across a code change can carry a
+    value written by the previous version of this file, and a position field is
+    never worth a crash -- landing on lead 1 is a recoverable annoyance, an
+    unusable page is not.
+
+    TypeError as well as ValueError: None raises the first, a bad string and
+    NaN the second, and each would otherwise have needed its own guard.
+    """
+    try:
+        i = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return min(max(i, 0), max(count - 1, 0))
+
+
 ctx = V.current()
 mine, meta, state = ctx["mine"], ctx["meta"], ctx["state"]
 account = ctx["account"]
@@ -45,7 +65,7 @@ if wanted is None and not st.session_state.get("_lead_deeplinked"):
 st.session_state["_lead_deeplinked"] = True
 if wanted in ids:
     st.session_state["lead_ix"] = ids.index(wanted)
-ix = min(max(int(st.session_state.get("lead_ix", 0)), 0), n - 1)
+ix = _position(st.session_state.get("lead_ix"), n)
 st.session_state["lead_ix"] = ix
 
 # A KEYED WIDGET IGNORES `index=`. Once "lead_jump" exists in session_state,
@@ -60,7 +80,7 @@ if st.session_state.get("lead_jump") != ix:
 
 
 def _jumped() -> None:
-    st.session_state["lead_ix"] = st.session_state["lead_jump"]
+    st.session_state["lead_ix"] = _position(st.session_state.get("lead_jump"), n)
 
 
 prog = V.progress_for(mine)
