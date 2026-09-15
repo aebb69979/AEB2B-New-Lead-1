@@ -1,6 +1,6 @@
 """Lead app for account executives — sign in, see your leads.
 
-    ../venv/bin/streamlit run app_ae/streamlit_app.py
+    make ae        # from the project folder; runs from inside app_ae/ like Cloud does
 
 Deployed to Streamlit Community Cloud behind a Cloudflare shell (web/index.html).
 The app URL is public — Community Cloud's viewer restriction only understands

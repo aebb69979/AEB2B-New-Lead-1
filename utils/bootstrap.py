@@ -13,13 +13,21 @@ are set, because `has_cloud()` decides and cloud always wins.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import streamlit as st
 
 from .store import COLUMNS, MemoryIdentityStore, SheetsIdentityStore, ensure_header
 
-LOCAL_ACCOUNTS = Path(".local_accounts.json")
+# Local-mode files live beside the app, wherever it was launched from. They were
+# CWD-relative, so launching from the project root and launching from app_ae/
+# (the way Community Cloud does, which is the only way config.toml applies) saw
+# two different sets of accounts. LEAD_APP_LOCAL_DIR overrides it, which is how
+# the browser tests keep their throwaway accounts away from real ones.
+# Both files are gitignored and refused by the pre-commit hook.
+LOCAL_DIR = Path(os.environ.get("LEAD_APP_LOCAL_DIR") or Path(__file__).resolve().parent.parent)
+LOCAL_ACCOUNTS = LOCAL_DIR / ".local_accounts.json"
 SNAPSHOT_GLOB = "m*_leads_*.csv"
 
 # Local mode reads snapshots off disk, and where they are depends on where the
@@ -305,7 +313,7 @@ def setup_problems() -> list[str]:
 # --------------------------------------------------------------------------
 # the call log
 # --------------------------------------------------------------------------
-LOCAL_CALL_LOG = Path(".local_call_log.json")
+LOCAL_CALL_LOG = LOCAL_DIR / ".local_call_log.json"
 
 
 def call_log_sheet_id() -> str:
