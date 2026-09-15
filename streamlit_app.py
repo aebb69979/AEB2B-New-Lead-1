@@ -48,15 +48,25 @@ def _bridge(token: str | None) -> None:
     The shell is first-party to its own domain, so its localStorage is not
     partitioned the way a cookie set inside this cross-origin iframe would be.
     It stores what we post here and replays it as `?s=` on the next load, which
-    is what makes a sign-in survive a browser refresh. Without this the token
-    lives only in the iframe's URL, which the shell rebuilds from scratch.
+    is what makes a sign-in survive a browser refresh.
 
-    Harmless when the app is opened directly: window.parent is window, and the
-    message goes nowhere.
+    window.TOP, not window.parent. `st.html` is not iframed, so this runs in the
+    app document -- and Community Cloud serves that document inside a wrapper
+    frame of its own. window.parent is that wrapper, which would swallow the
+    message; top is the shell however deep the nesting is.
+
+    The target origin is pinned to the shell. With '*' the token goes to
+    whatever page is on top, and nothing stops a third-party site framing this
+    app. With no shell configured nothing is posted at all: the app still
+    works opened directly, it just does not persist across a refresh.
     """
+    target = boot.shell_origin()
+    if not target:
+        return
     payload = json.dumps({"type": "m1-session", "token": token})
     st.html(
-        f"<script>try{{window.parent.postMessage({payload}, '*');}}catch(e){{}}</script>",
+        f"<script>try{{window.top.postMessage({payload}, {json.dumps(target)});}}"
+        f"catch(e){{}}</script>",
         unsafe_allow_javascript=True,
     )
 
@@ -87,6 +97,13 @@ account = acc.session_account(store, _token(), boot.session_secret())
 # signed out
 # --------------------------------------------------------------------------
 if account is None:
+    # Clear the shell's copy on EVERY signed-out render, not just from the
+    # sign-out button. The button's own bridge call is followed immediately by
+    # st.rerun(), which can stop the script before that element reaches the
+    # browser -- so the shell kept the token, replayed it on the next refresh,
+    # and the still-valid token signed the AE straight back in. This also
+    # drops tokens that expired or were revoked, which are useless to replay.
+    _bridge(None)
     _, mid, _ = st.columns([1, 2, 1])
     with mid:
         st.title("Lead app")

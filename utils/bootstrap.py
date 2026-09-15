@@ -101,6 +101,25 @@ def is_dev() -> bool:
     return not has_cloud()
 
 
+def shell_origin() -> str:
+    """The Cloudflare shell's origin, e.g. 'https://ae-leads.pages.dev', or ''.
+
+    The session bridge posts the token ONLY to this origin. Posting to '*'
+    would deliver it to whatever page happens to be framing the app, and
+    Community Cloud cannot send frame-ancestors, so any site can frame it: an
+    AE signing in inside someone else's frame would hand them a live session.
+    Normalised to scheme://host because that is exactly what postMessage
+    compares -- a trailing slash or a path would make every message silently
+    undeliverable.
+    """
+    raw = str(secret("shell_origin", "") or "").strip()
+    if not raw:
+        return ""
+    from urllib.parse import urlsplit
+    u = urlsplit(raw if "://" in raw else f"https://{raw}")
+    return f"{u.scheme}://{u.netloc}" if u.scheme == "https" and u.netloc else ""
+
+
 # --------------------------------------------------------------------------
 # accounts
 # --------------------------------------------------------------------------
@@ -248,6 +267,11 @@ def setup_problems() -> list[str]:
             out.append("`password_pepper` is still the development value.")
         if session_secret().startswith("dev-only"):
             out.append("`session_secret` is still the development value.")
+        if not shell_origin():
+            out.append("`shell_origin` is not set — the app works when opened "
+                       "directly, but sign-in will not survive a refresh inside "
+                       "the Cloudflare shell. Set it to the shell's https origin, "
+                       "e.g. `https://ae-leads.pages.dev`.")
         if not call_log_sheet_id():
             out.append("`call_log_sheet_id` is not set — AEs can see leads but "
                        "cannot log calls. Create a separate spreadsheet (not the "

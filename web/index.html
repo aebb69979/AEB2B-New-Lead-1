@@ -60,7 +60,7 @@
   "use strict";
   var APP     = "https://CHANGE-ME.streamlit.app/";   // <- the Community Cloud URL
   var KEY     = "m1.session";
-  var VERSION = "shell-1";
+  var VERSION = "shell-2";
 
   function readStored() {
     try { return window.localStorage.getItem(KEY) || ""; } catch (e) { return ""; }
@@ -90,11 +90,20 @@
   });
   frame.src = src.toString();
 
-  // The app posts its session token up whenever it changes.
+  // The app posts its session token up whenever it changes, and null whenever
+  // it renders signed out -- which is what makes sign-out stick.
+  var APP_ORIGIN = new URL(APP).origin;
   window.addEventListener("message", function (ev) {
-    if (new URL(APP).origin !== ev.origin) return;          // only from our app
     var d = ev.data;
     if (!d || d.type !== "m1-session") return;
+    if (ev.origin !== APP_ORIGIN) {
+      // Say so. A wrong APP url, or the app's shell_origin secret not matching
+      // this page, otherwise fails in total silence: sign-in just stops
+      // surviving a refresh and nothing anywhere explains why.
+      console.warn("[shell] ignored session message from", ev.origin,
+                   "- expected", APP_ORIGIN);
+      return;
+    }
     store(typeof d.token === "string" && d.token ? d.token : null);
   }, false);
 
