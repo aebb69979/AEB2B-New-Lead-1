@@ -58,6 +58,15 @@ def login_css() -> str:
   }}
   {ON_LOGIN} [data-testid="stHeader"] {{ background: transparent; }}
 
+  /* No sidebar while the login card is on the page. Two cases, both measured
+     in a browser: after sign-out Streamlit keeps an empty sidebar panel drawn
+     (covering the logo bar), and during sign-in the new sidebar arrives ~60ms
+     before the page that replaces the card, so it flashed in beside the old
+     login screen. Keyed to the card like the wallpaper, so it lifts the
+     instant the card is gone. */
+  {ON_LOGIN} [data-testid="stSidebar"],
+  {ON_LOGIN} [data-testid="stExpandSidebarButton"] {{ display: none; }}
+
   /* White top bar with the logo. A pseudo-element, so there is no extra DOM
      for Streamlit to lay out, and it vanishes with the card like the rest.
      Kept one z-index step under Streamlit's own header so the app toolbar

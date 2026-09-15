@@ -84,43 +84,25 @@ def _sign_in(token: str) -> None:
 
 
 def _sign_out() -> None:
-    st.session_state.pop("session_token", None)
-    if SESSION_KEY in st.query_params:
-        del st.query_params[SESSION_KEY]
+    """Leave nothing of this person behind in the tab.
+
+    Everything goes, not just the token: position in the lead list, chosen
+    batch, filters, half-typed notes, the ?lead= deep link. None of it is lead
+    data, and another AE's lead_id is ignored anyway, but on a shared office
+    computer the next person to sign in would otherwise start inside a
+    stranger's place in the app.
+    """
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    for param in (SESSION_KEY, "lead"):
+        if param in st.query_params:
+            del st.query_params[param]
     _bridge(None)
 
 
-_tok = _token()
-if not _tok:
-    # No token means signed out, and that is known without asking Google. So
-    # the login look goes out before get_store(), which costs seconds on a cold
-    # process. Signed-in runs never send it: at ~45 KB it would otherwise ride
-    # along with every click in the lead views.
-    st.html(brand.login_css())
-# No token, no lookup: session_account would return None without reading the
-# account sheet, but get_store() itself is the slow part on a cold process.
-account = (acc.session_account(boot.get_store(), _tok, boot.session_secret())
-           if _tok else None)
-
-# --------------------------------------------------------------------------
-# signed out
-# --------------------------------------------------------------------------
-if account is None:
-    # Clear the shell's copy on EVERY signed-out render, not just from the
-    # sign-out button. The button's own bridge call is followed immediately by
-    # st.rerun(), which can stop the script before that element reaches the
-    # browser -- so the shell kept the token, replayed it on the next refresh,
-    # and the still-valid token signed the AE straight back in. This also
-    # drops tokens that expired or were revoked, which are useless to replay.
-    _bridge(None)
-    if _tok:
-        st.html(brand.login_css())     # a token was presented but is dead
-    # Fill the shared caches while this person types their password. Sign-in
-    # on a cold process measured 8.6s, almost all of it Drive and Sheets
-    # set-up; warm, the same render took 0.2s. None of it is per-user -- rows
-    # are filtered to one territory only after sign-in -- so doing it early
-    # exposes nothing.
-    boot.warm_caches()
+def _login_view() -> None:
+    """The sign-in card. A page function so the signed-out state can declare its
+    own navigation -- see the note where it is run."""
     _, mid, _ = st.columns([1, 2, 1])
     with mid, st.container(key="login_card"):
         st.title("Lead app", anchor=False)
@@ -158,6 +140,47 @@ if account is None:
                     r = acc.sign_up(boot.get_store(), e2, p2, boot.pepper(), display_name=n2,
                                     admin_emails=boot.admin_emails())
                     (st.success if r.ok else st.error)(r.message)
+
+
+_tok = _token()
+if not _tok:
+    # No token means signed out, and that is known without asking Google. So
+    # the login look goes out before get_store(), which costs seconds on a cold
+    # process. Signed-in runs never send it: at ~45 KB it would otherwise ride
+    # along with every click in the lead views.
+    st.html(brand.login_css())
+# No token, no lookup: session_account would return None without reading the
+# account sheet, but get_store() itself is the slow part on a cold process.
+account = (acc.session_account(boot.get_store(), _tok, boot.session_secret())
+           if _tok else None)
+
+# --------------------------------------------------------------------------
+# signed out
+# --------------------------------------------------------------------------
+if account is None:
+    # Clear the shell's copy on EVERY signed-out render, not just from the
+    # sign-out button. The button's own bridge call is followed immediately by
+    # st.rerun(), which can stop the script before that element reaches the
+    # browser -- so the shell kept the token, replayed it on the next refresh,
+    # and the still-valid token signed the AE straight back in. This also
+    # drops tokens that expired or were revoked, which are useless to replay.
+    _bridge(None)
+    if _tok:
+        st.html(brand.login_css())     # a token was presented but is dead
+    # Fill the shared caches while this person types their password. Sign-in
+    # on a cold process measured 8.6s, almost all of it Drive and Sheets
+    # set-up; warm, the same render took 0.2s. None of it is per-user -- rows
+    # are filtered to one territory only after sign-in -- so doing it early
+    # exposes nothing.
+    boot.warm_caches()
+    # Signed out gets its OWN navigation, a single hidden page. Stopping before
+    # st.navigation() -- as this branch used to -- sends the browser no menu at
+    # all, and Streamlit keeps drawing the LAST one it was given: after signing
+    # out, "My leads" and "Company view" stayed in the sidebar indefinitely,
+    # covering the logo bar. Nothing leaked, since every click re-enters this
+    # branch first, but a menu of pages you cannot open is simply wrong.
+    st.navigation([st.Page(_login_view, title="Sign in", icon=":material/login:",
+                           default=True)], position="hidden").run()
     st.stop()
 
 # --------------------------------------------------------------------------
