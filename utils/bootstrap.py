@@ -67,6 +67,15 @@ def _file_secrets() -> dict:
         return {}
 
 
+# What the warm-up thread may read. Captured on the script thread in
+# warm_caches(), because st.secrets is not guaranteed to be readable from a
+# thread with no script run -- under AppTest it demonstrably is not, and a
+# warm-up that silently sees no credentials just leaves every cache cold.
+_THREAD_SECRETS: dict = {}
+_WARM_SECRET_NAMES = ("gcp_service_account", "drive_folder_id",
+                      "identity_sheet_id", "call_log_sheet_id")
+
+
 def secret(name: str, default=None):
     """A secret, or a default. `st.secrets` raises when the file is absent, which
     would make local mode impossible."""
@@ -75,6 +84,8 @@ def secret(name: str, default=None):
             return st.secrets[name]
     except Exception:                                      # noqa: BLE001
         pass
+    if name in _THREAD_SECRETS:
+        return _THREAD_SECRETS[name]
     return _file_secrets().get(name, default)
 
 
@@ -183,15 +194,24 @@ class _JsonStore(MemoryIdentityStore):
 
 
 @st.cache_resource(show_spinner=False)
+def _gspread_client():
+    """One authorised gspread client for both sheets. The account store and the
+    call log each built their own, paying client set-up and a token exchange
+    twice on every cold start."""
+    import gspread
+    from . import leads as L
+    L.prefer_ipv4_if_broken()
+    return gspread.service_account_from_dict(dict(secret("gcp_service_account")))
+
+
+@st.cache_resource(show_spinner=False)
 def get_store():
     """The account store. cache_resource because it holds a network client and
     is shared across sessions -- session_state would give every visitor their
     own copy and their own cache."""
     if not has_cloud():
         return _JsonStore(LOCAL_ACCOUNTS)
-    import gspread
-    gc = gspread.service_account_from_dict(dict(secret("gcp_service_account")))
-    sh = gc.open_by_key(str(secret("identity_sheet_id")))
+    sh = _gspread_client().open_by_key(str(secret("identity_sheet_id")))
     try:
         ws = sh.worksheet("ae_identity")
     except Exception:                                      # noqa: BLE001
@@ -311,12 +331,65 @@ def get_call_log():
         return LocalCallLog(LOCAL_CALL_LOG)
     if not call_log_sheet_id():
         return None
-    import gspread
-    gc = gspread.service_account_from_dict(dict(secret("gcp_service_account")))
-    sh = gc.open_by_key(call_log_sheet_id())
+    sh = _gspread_client().open_by_key(call_log_sheet_id())
     try:
         ws = sh.worksheet("call_log")
     except Exception:                                      # noqa: BLE001
         ws = sh.add_worksheet("call_log", rows=5000, cols=len(LOG_COLUMNS))
     _hdr(ws)
     return SheetsCallLog(ws)
+
+
+# --------------------------------------------------------------------------
+# warm-up
+# --------------------------------------------------------------------------
+import logging as _logging
+import threading as _threading
+import time as _time
+
+_WARM_LOCK = _threading.Lock()
+_WARM_AT = 0.0
+WARM_EVERY = 60.0     # seconds; a busy login page must not start a thread per visitor
+
+
+def warm_caches() -> bool:
+    """Fill the shared caches in the background. Returns True if it started.
+
+    Called from the sign-in page, so the seconds of Drive and Sheets set-up are
+    spent while the AE types a password instead of after they press Sign in.
+
+    Safe because Streamlit's caches take a lock per entry with double-checked
+    retrieval: if this thread is mid-download when the signed-in page asks for
+    the same snapshot, that page waits for it and reuses it rather than
+    downloading again. Nothing here is per-user -- rows are narrowed to one
+    territory only after sign-in -- so filling it early exposes nothing.
+
+    Failures are logged and dropped. The signed-in page makes the same calls
+    and will surface a real problem there, with the normal error handling.
+    """
+    global _WARM_AT
+    with _WARM_LOCK:
+        now = _time.time()
+        if now - _WARM_AT < WARM_EVERY:
+            return False
+        _WARM_AT = now
+        for name in _WARM_SECRET_NAMES:                # see _THREAD_SECRETS
+            value = secret(name)
+            if value is not None:
+                _THREAD_SECRETS[name] = dict(value) if hasattr(value, "keys") else value
+    _threading.Thread(target=_warm, name="warm-caches", daemon=True).start()
+    return True
+
+
+def _warm() -> None:
+    log = _logging.getLogger(__name__)
+    try:
+        get_store()
+        months = get_months()
+        if months:
+            get_leads(months[0]["id"])       # the batch every page opens on
+        calls = get_call_log()
+        if calls is not None:
+            calls.rows()
+    except Exception:                                      # noqa: BLE001
+        log.warning("cache warm-up failed; the page will retry", exc_info=True)

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 import re
+import threading
 from pathlib import Path
 
 import pandas as pd
@@ -57,6 +58,20 @@ def prefer_ipv4_if_broken(probe_timeout: float = 3.0) -> bool:
     So: probe once, and only if IPv6 is actually unreachable, tell urllib3 to
     ask for IPv4 addresses. No effect on networks where IPv6 works.
     """
+    global _IPV4_DECIDED
+    if _IPV4_DECIDED is not None:
+        return _IPV4_DECIDED
+    _IPV4_DECIDED = _probe_ipv6(probe_timeout)
+    return _IPV4_DECIDED
+
+
+# The network does not change under a running process, so decide once. This was
+# re-probed on every Drive call, each probe a TCP connect that can wait up to
+# probe_timeout seconds on a network where IPv6 resolves but does not route.
+_IPV4_DECIDED: bool | None = None
+
+
+def _probe_ipv6(probe_timeout: float) -> bool:
     import socket
     try:
         infos = socket.getaddrinfo("oauth2.googleapis.com", 443, socket.AF_INET6)
@@ -111,15 +126,31 @@ def load_local(path: str | Path) -> pd.DataFrame:
 # --------------------------------------------------------------------------
 # Drive
 # --------------------------------------------------------------------------
+_SESSIONS: dict[str, object] = {}
+_SESSIONS_LOCK = threading.Lock()
+
+
 def _session(service_account_info: dict):
-    from google.auth.transport.requests import AuthorizedSession
-    from google.oauth2.service_account import Credentials
-    prefer_ipv4_if_broken()
-    creds = Credentials.from_service_account_info(
-        service_account_info,
-        scopes=["https://www.googleapis.com/auth/drive.readonly",
-                "https://www.googleapis.com/auth/spreadsheets"])
-    return AuthorizedSession(creds)
+    """One authorised session per service account, reused for every call.
+
+    Building a fresh one per call meant a fresh OAuth token exchange before
+    every Drive request -- listing the folder and downloading the snapshot each
+    paid it. AuthorizedSession refreshes its own token when it expires, under
+    its own lock, so sharing it across sessions and the warm-up thread is safe.
+    """
+    key = str(service_account_info.get("client_email", ""))
+    with _SESSIONS_LOCK:
+        sess = _SESSIONS.get(key)
+        if sess is None:
+            from google.auth.transport.requests import AuthorizedSession
+            from google.oauth2.service_account import Credentials
+            prefer_ipv4_if_broken()
+            creds = Credentials.from_service_account_info(
+                service_account_info,
+                scopes=["https://www.googleapis.com/auth/drive.readonly",
+                        "https://www.googleapis.com/auth/spreadsheets"])
+            sess = _SESSIONS[key] = AuthorizedSession(creds)
+    return sess
 
 
 SNAPSHOT_RE = re.compile(r"^m(\d+)_leads_(\d{4}-\d{2}-\d{2})\.csv$")

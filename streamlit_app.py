@@ -29,12 +29,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from utils import accounts as acc                      # noqa: E402
 from utils import bootstrap as boot                    # noqa: E402
+from utils import brand                                # noqa: E402
 from utils import identity as idy
 from utils import leads as L                      # noqa: E402
 
 st.set_page_config(page_title="Leads", page_icon=":material/call:", layout="wide")
-
-store = boot.get_store()
 SESSION_KEY = "s"      # query param the Cloudflare shell replays
 
 
@@ -91,38 +90,17 @@ def _sign_out() -> None:
     _bridge(None)
 
 
-LOGIN_STYLE = """
-<style>
-  /* Only ever injected on the signed-out page, so none of this reaches the
-     lead views. Relative url(): Community Cloud serves the app under /~/+/,
-     and a root-relative /app/static/ would miss it. */
-  .stApp {
-    background: #7a3a9a url("app/static/login_background.jpg") center / cover no-repeat;
-  }
-  [data-testid="stHeader"] { background: transparent; }
-
-  /* A card, because the form's dark text is unreadable straight on the
-     saturated half of the gradient. Opaque enough to read, and the light
-     theme is pinned in config.toml, so dark text on it is safe. */
-  .st-key-login_card {
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 20px;
-    padding: 2.25rem 2rem 1.75rem;
-    box-shadow: 0 24px 64px rgba(20, 10, 40, 0.35);
-    margin-top: 8vh;
-  }
-  @media (max-width: 640px) {
-    .st-key-login_card { margin-top: 2vh; padding: 1.5rem 1.25rem; }
-  }
-</style>
-"""
-
-
-def _login_style() -> None:
-    st.html(LOGIN_STYLE)
-
-
-account = acc.session_account(store, _token(), boot.session_secret())
+_tok = _token()
+if not _tok:
+    # No token means signed out, and that is known without asking Google. So
+    # the login look goes out before get_store(), which costs seconds on a cold
+    # process. Signed-in runs never send it: at ~45 KB it would otherwise ride
+    # along with every click in the lead views.
+    st.html(brand.login_css())
+# No token, no lookup: session_account would return None without reading the
+# account sheet, but get_store() itself is the slow part on a cold process.
+account = (acc.session_account(boot.get_store(), _tok, boot.session_secret())
+           if _tok else None)
 
 # --------------------------------------------------------------------------
 # signed out
@@ -135,10 +113,17 @@ if account is None:
     # and the still-valid token signed the AE straight back in. This also
     # drops tokens that expired or were revoked, which are useless to replay.
     _bridge(None)
-    _login_style()
+    if _tok:
+        st.html(brand.login_css())     # a token was presented but is dead
+    # Fill the shared caches while this person types their password. Sign-in
+    # on a cold process measured 8.6s, almost all of it Drive and Sheets
+    # set-up; warm, the same render took 0.2s. None of it is per-user -- rows
+    # are filtered to one territory only after sign-in -- so doing it early
+    # exposes nothing.
+    boot.warm_caches()
     _, mid, _ = st.columns([1, 2, 1])
     with mid, st.container(key="login_card"):
-        st.title("Lead app")
+        st.title("Lead app", anchor=False)
         st.caption("Sign in with your True Corp work email.")
         if boot.is_dev():
             st.warning("Development mode — accounts are stored in a local file and "
@@ -152,7 +137,7 @@ if account is None:
                 email = st.text_input("Work email", placeholder=f"name.surname@{idy.EMAIL_DOMAIN}")
                 pw = st.text_input("Password", type="password")
                 if st.form_submit_button("Sign in", type="primary", width="stretch"):
-                    r = acc.log_in(store, email, pw, boot.pepper(), boot.session_secret())
+                    r = acc.log_in(boot.get_store(), email, pw, boot.pepper(), boot.session_secret())
                     if r.ok:
                         _sign_in(r.session)
                         st.rerun()
@@ -170,7 +155,7 @@ if account is None:
                                    help=f"At least {idy.MIN_PASSWORD_LEN} characters. "
                                         "Please do not reuse a password from another system.")
                 if st.form_submit_button("Request access", width="stretch"):
-                    r = acc.sign_up(store, e2, p2, boot.pepper(), display_name=n2,
+                    r = acc.sign_up(boot.get_store(), e2, p2, boot.pepper(), display_name=n2,
                                     admin_emails=boot.admin_emails())
                     (st.success if r.ok else st.error)(r.message)
     st.stop()

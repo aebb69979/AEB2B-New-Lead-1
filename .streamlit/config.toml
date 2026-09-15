@@ -4,10 +4,6 @@ base = "light"
 
 [server]
 enableXsrfProtection = true
-# Serves app_ae/static/ at app/static/ -- the login background. A file,
-# not base64 in the page: the browser caches it once, instead of the
-# signed-out page re-sending ~200 KB of image on every rerun.
-enableStaticServing = true
 
 [browser]
 gatherUsageStats = false
