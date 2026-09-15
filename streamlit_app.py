@@ -91,6 +91,37 @@ def _sign_out() -> None:
     _bridge(None)
 
 
+LOGIN_STYLE = """
+<style>
+  /* Only ever injected on the signed-out page, so none of this reaches the
+     lead views. Relative url(): Community Cloud serves the app under /~/+/,
+     and a root-relative /app/static/ would miss it. */
+  .stApp {
+    background: #7a3a9a url("app/static/login_background.jpg") center / cover no-repeat;
+  }
+  [data-testid="stHeader"] { background: transparent; }
+
+  /* A card, because the form's dark text is unreadable straight on the
+     saturated half of the gradient. Opaque enough to read, and the light
+     theme is pinned in config.toml, so dark text on it is safe. */
+  .st-key-login_card {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    padding: 2.25rem 2rem 1.75rem;
+    box-shadow: 0 24px 64px rgba(20, 10, 40, 0.35);
+    margin-top: 8vh;
+  }
+  @media (max-width: 640px) {
+    .st-key-login_card { margin-top: 2vh; padding: 1.5rem 1.25rem; }
+  }
+</style>
+"""
+
+
+def _login_style() -> None:
+    st.html(LOGIN_STYLE)
+
+
 account = acc.session_account(store, _token(), boot.session_secret())
 
 # --------------------------------------------------------------------------
@@ -104,8 +135,9 @@ if account is None:
     # and the still-valid token signed the AE straight back in. This also
     # drops tokens that expired or were revoked, which are useless to replay.
     _bridge(None)
+    _login_style()
     _, mid, _ = st.columns([1, 2, 1])
-    with mid:
+    with mid, st.container(key="login_card"):
         st.title("Lead app")
         st.caption("Sign in with your True Corp work email.")
         if boot.is_dev():
