@@ -105,7 +105,7 @@ def _login_view() -> None:
     own navigation -- see the note where it is run."""
     _, mid, _ = st.columns([1, 2, 1])
     with mid, st.container(key="login_card"):
-        st.title("Lead app", anchor=False)
+        st.title("Lead Dashboard", anchor=False)
         st.caption("Sign in with your True Corp work email.")
         if boot.is_dev():
             st.warning("Development mode — accounts are stored in a local file and "
