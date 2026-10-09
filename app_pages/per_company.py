@@ -132,6 +132,15 @@ def _rows(pairs):
     return [(k, str(v).strip()) for k, v in pairs if str(v).strip() and str(v) != "nan"]
 
 
+def _money(v):
+    """1000000.0 -> '1,000,000'. Anything non-numeric passes through for _rows."""
+    try:
+        f = float(str(v).replace(",", ""))
+    except (TypeError, ValueError):
+        return v
+    return f"{f:,.0f}" if f == f else v
+
+
 left, right = st.columns(2)
 with left:
     with st.container(border=True):
@@ -143,10 +152,25 @@ with left:
             st.markdown(f"{k} · **{v}**" if k == "Phone" else f"{k} · {v}")
         if not got:
             st.caption("No contact details found for this company.")
+        # Where the number came from. A number read off a live Business Profile
+        # and a number the model recalled are worth different amounts of
+        # patience on the phone, and they used to look identical here. Batches
+        # published before this existed carry no such column, and say so rather
+        # than claiming either way.
+        if any(k == "Phone" for k, _ in got):
+            if not V.has_provenance(lead):
+                st.caption(":material/help: Source not recorded for this batch.")
+            elif V.is_verified(lead):
+                url = str(lead.get("evidence_url", "")).strip()
+                seen = ":material/verified: Read from a public listing"
+                st.caption(f"{seen} · [see it]({url})" if url.startswith("http") else seen)
+            else:
+                st.caption(":material/error_outline: Not verified — no source found "
+                           "for this number. Check it before relying on it.")
 with right:
     with st.container(border=True):
         st.markdown("**Company**")
-        for k, v in _rows([("Registered capital", lead.get("registered_capital")),
+        for k, v in _rows([("Registered capital", _money(lead.get("registered_capital"))),
                            ("Address", lead.get("address")),
                            ("Sub-district", lead.get("sub_district")),
                            ("District", lead.get("district")),
@@ -223,12 +247,20 @@ with st.container(border=True):
     try:
         prev_dt = dt.datetime.strptime(when, "%Y-%m-%d %H:%M")
     except ValueError:
-        prev_dt = dt.datetime.now().replace(second=0, microsecond=0)
+        # Bangkok, not the server clock: Community Cloud runs in UTC.
+        prev_dt = tf.now().replace(second=0, microsecond=0, tzinfo=None)
 
     c1, c2, c3 = st.columns([1, 1, 1])
     d = c1.date_input("Call date", value=prev_dt.date(), key=f"d_{k}",
                       format="YYYY-MM-DD")
-    t = c2.time_input("Call time", value=prev_dt.time(), key=f"t_{k}", step=300)
+    # A selectbox, not st.time_input: time_input only renders bare 24-hour, and
+    # "19:54 (7:54 PM)" in the box itself is what stops it being read as mm:ss.
+    # 5-minute grid plus the default's own minute, so "now" is never rounded.
+    prev_t = prev_dt.time()
+    times = sorted({dt.time(m // 60, m % 60) for m in range(0, 24 * 60, 5)} | {prev_t})
+    t = c2.selectbox("Time of call (HH:MM)", times, index=times.index(prev_t), key=f"t_{k}",
+                     format_func=lambda x: f"{x:%H:%M} ({x.strftime('%I:%M %p').lstrip('0')})",
+                     help="Time of day the call was made. Type to search, e.g. 14:3.")
     ch = c3.selectbox("Channel", cl.CHANNELS, key=f"ch_{k}",
                       index=cl.CHANNELS.index(was["channel"])
                       if was.get("channel") in cl.CHANNELS else 0)

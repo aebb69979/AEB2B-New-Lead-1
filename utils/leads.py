@@ -30,6 +30,7 @@ AE_LOADABLE = [
     "phone", "email", "line_id", "website", "facebook",
     "business_description", "registered_capital",
     "address", "sub_district", "district", "province",
+    "verified", "evidence_url",
     "ae_id", "ae_name", "display_order",
 ]
 # Never loaded. `registration_number` is the traceability field; the rest would

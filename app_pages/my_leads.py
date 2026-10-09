@@ -57,6 +57,14 @@ view.insert(0, "status", [_status(prog[str(i)]) for i in mine["lead_id"]])
 view.insert(1, "attempts", [prog[str(i)]["attempts"] for i in mine["lead_id"]])
 view["last_outcome"] = [prog[str(i)]["last_disposition"] for i in mine["lead_id"]]
 
+# Only for batches that recorded it. On an older batch the column would be a
+# row of identical "unverified" ticks, which reads as a finding about the leads
+# rather than what it is -- a gap in what was recorded at the time.
+SHOW_VERIFIED = any(V.has_provenance(r) for _, r in mine.iterrows())
+if SHOW_VERIFIED:
+    view.insert(view.columns.get_loc("phone") + 1, "verified",
+                [V.is_verified(r) for _, r in mine.iterrows()])
+
 # A filter, not a sort. List order is a stored shuffle that spreads the older
 # leads through the batch; any sort an AE could apply would undo it and make
 # lead age track how far down the list they got.
@@ -83,6 +91,11 @@ event = st.dataframe(
         "attempts": st.column_config.NumberColumn("Tries", width="small"),
         "company_name": st.column_config.TextColumn("Company", width="large"),
         "phone": st.column_config.TextColumn("Phone", width="small"),
+        "verified": st.column_config.CheckboxColumn(
+            "Verified", width="small",
+            help="Ticked when this number was read off a public listing and the "
+                 "source was recorded. Unticked means no source was found for "
+                 "it — the number may still be right, but nothing backs it."),
         "district": st.column_config.TextColumn("District", width="small"),
         "province": st.column_config.TextColumn("Province", width="small"),
         "business_description": st.column_config.TextColumn("Business", width="large"),

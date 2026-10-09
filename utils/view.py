@@ -80,3 +80,24 @@ def progress_for(mine) -> dict:
                     "last_disposition": "", "last_logged_at": 0.0, "interest": ""}
                 for i in ids}
     return cl.lead_progress(log.rows(), ids)
+
+
+# --------------------------------------------------------------------------
+# provenance of a phone number
+# --------------------------------------------------------------------------
+# The snapshot carries `verified` only for batches enriched by the grounded
+# path. Older batches -- everything published before it existed -- have no such
+# column, and "we did not record it" must not render as "we checked and failed".
+# Hence two functions: one asks whether the batch knows, the other what it says.
+_TRUE = {"true", "1", "yes", "t"}
+
+
+def has_provenance(lead) -> bool:
+    """True when this batch recorded where its numbers came from."""
+    v = lead.get("verified", None)
+    return v is not None and str(v).strip().lower() not in ("", "nan", "none")
+
+
+def is_verified(lead) -> bool:
+    """True when this number was read off a source the run cited."""
+    return str(lead.get("verified", "")).strip().lower() in _TRUE
