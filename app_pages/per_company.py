@@ -165,8 +165,7 @@ with left:
                 seen = ":material/verified: Read from a public listing"
                 st.caption(f"{seen} · [see it]({url})" if url.startswith("http") else seen)
             else:
-                st.caption(":material/error_outline: Not verified — no source found "
-                           "for this number. Check before relying on it.")
+                st.caption(":material/error_outline: Not confident. Check before relying on it.")
 with right:
     with st.container(border=True):
         st.markdown("**Company**")
