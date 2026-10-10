@@ -133,12 +133,12 @@ def _rows(pairs):
 
 
 def _money(v):
-    """1000000.0 -> '1,000,000'. Anything non-numeric passes through for _rows."""
+    """1000000.0 -> '1,000,000 THB'. Anything non-numeric passes through for _rows."""
     try:
         f = float(str(v).replace(",", ""))
     except (TypeError, ValueError):
         return v
-    return f"{f:,.0f}" if f == f else v
+    return f"{f:,.0f} THB" if f == f else v
 
 
 left, right = st.columns(2)
@@ -166,7 +166,7 @@ with left:
                 st.caption(f"{seen} · [see it]({url})" if url.startswith("http") else seen)
             else:
                 st.caption(":material/error_outline: Not verified — no source found "
-                           "for this number. Check it before relying on it.")
+                           "for this number. Check before relying on it.")
 with right:
     with st.container(border=True):
         st.markdown("**Company**")
