@@ -6,7 +6,7 @@ fall out of that and none of them work with a mutable log:
 
   * Twenty-five people writing at once cannot lose each other's work. There is
     no read-modify-write to race.
-  * The 45-day analysis cutoff is a filter -- `logged_at <= freeze_at` -- so the
+  * The 30-day analysis cutoff is a filter -- `logged_at <= freeze_at` -- so the
     frozen dataset is derived, reproducible forever, and needs no copied
     spreadsheet that could drift from it.
   * Day-30 and day-90 views come from the same rows whenever they are wanted.

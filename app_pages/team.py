@@ -151,7 +151,11 @@ m.metric("Dials logged", int(staffed["dials"].sum()))
 # by AE
 # --------------------------------------------------------------------------
 head, opt = st.columns([3, 1], vertical_alignment="bottom")
-head.subheader("By SM / AE")
+# The SM column is for administrators comparing regions. A manager would see
+# only their own name on every row, so for them it is dropped, and the title
+# with it.
+show_sm = is_admin
+head.subheader("By SM / AE" if show_sm else "By AE")
 grouped = opt.toggle("Group by Region", value=True, key="team_group")
 st.caption("Outcome columns count dials, so one lead called three times adds three. "
            f"Floor met: the lead was contacted or tried {cl.MIN_ATTEMPTS} times.")
@@ -164,7 +168,8 @@ if grouped:
     first = ~shown["ae_region"].duplicated()
     shown.loc[~first, ["ae_region", "sm"]] = ""
 st.dataframe(
-    shown[["ae_region", "sm", "ae_name", "pace", "leads", "started", "floor_share",
+    shown[["ae_region", *(["sm"] if show_sm else []), "ae_name", "pace", "leads", "started",
+           "floor_share",
            "contacted", "dials", *CODES.values(), "last_call"]],
     hide_index=True, width="stretch",
     column_config={

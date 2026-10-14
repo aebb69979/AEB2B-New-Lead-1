@@ -3,8 +3,8 @@
     day  0   batch issued
     day 21   intervention check — the last point where a behind AE can recover
              without working harder than the plan assumed
-    day 30   soft deadline
-    day 45   ANALYSIS CUTOFF
+    day 30   soft deadline AND ANALYSIS CUTOFF (was day 45 until 2026-10-14;
+             shortened before m1 was handed out, so no batch ran on 45)
 
 The cutoff freezes the MEASUREMENT, not the work. Its whole purpose is to stop
 lead age at time of call drifting by AE -- otherwise an AE effect and a lead-age
@@ -30,7 +30,7 @@ import datetime as dt
 
 CHECKPOINT_DAY = 21      # intervention check
 SOFT_DAY = 30            # soft deadline
-FREEZE_DAY = 45          # analysis cutoff
+FREEZE_DAY = 30          # analysis cutoff
 
 # Minimum dials a batch implies: every lead gets the 3-attempt floor.
 ATTEMPT_FLOOR = 3

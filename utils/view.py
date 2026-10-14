@@ -69,10 +69,10 @@ def window_note(state: dict, write) -> None:
 
     `closed` is past the ANALYSIS cutoff, not unavailable. Saying so matters:
     an AE who reads "closed" as "stop" would leave the follow-up data -- does
-    persistence past day 45 pay off? -- permanently uncollected.
+    persistence past the cutoff pay off? -- permanently uncollected.
     """
     if state.get("closed"):
-        write(":material/lock_clock: Past the 45-day analysis cutoff. Still "
+        write(f":material/lock_clock: Past the {sch.FREEZE_DAY}-day analysis cutoff. Still "
               "callable — later attempts are recorded, they just sit outside "
               "the primary analysis.")
     elif state.get("known") and state["days_left"] <= 10:
