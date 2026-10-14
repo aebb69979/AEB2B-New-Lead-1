@@ -17,7 +17,8 @@ import time
 
 from . import identity as idy
 from . import timefmt
-from .store import APPROVED, DISABLED, PENDING, IdentityStore, blank_record
+from .store import (AE, APPROVED, DISABLED, MANAGER, PENDING, REGIONS, IdentityStore,
+                    blank_record)
 
 
 class Result:
@@ -145,9 +146,33 @@ def approve(store: IdentityStore, email: str, ae_id: str) -> Result:
         return Result(False, "No such account.", "no_account")
     if not str(ae_id).strip():
         return Result(False, "Assign a territory (ae_id) when approving.", "no_ae_id")
-    store.update(e, status=APPROVED, ae_id=str(ae_id).strip(),
+    store.update(e, status=APPROVED, ae_id=str(ae_id).strip(), role=AE, regions="",
                  approved_at=timefmt.text(), failed_attempts=0, locked_until="")
     return Result(True, f"Approved {e} as {ae_id}.", "approved")
+
+
+def approve_manager(store: IdentityStore, email: str, regions) -> Result:
+    """Approve as a sales manager over `regions`, or turn an AE account into one.
+
+    ae_id is CLEARED, not kept: every AE page and the call-logging form select
+    by ae_id, so a manager holding one could log calls into an AE's territory.
+    With none, those pages show nothing and the manager can only read.
+    """
+    e = idy.normalize_email(email)
+    if not e or not store.get(e):
+        return Result(False, "No such account.", "no_account")
+    if isinstance(regions, str):
+        regions = regions.replace(";", ",").split(",")
+    picked = [r.strip() for r in regions if r.strip() in REGIONS]
+    if not picked:
+        return Result(False, "Pick at least one region for a sales manager.", "no_regions")
+    rec = store.get(e)
+    fields = dict(role=MANAGER, regions=", ".join(picked), ae_id="")
+    if str(rec.get("status", "")).strip().lower() == PENDING:
+        fields.update(status=APPROVED, approved_at=timefmt.text(),
+                      failed_attempts=0, locked_until="")
+    store.update(e, **fields)
+    return Result(True, f"{e} is a sales manager for {', '.join(picked)}.", "approved_manager")
 
 
 def set_status(store: IdentityStore, email: str, status: str) -> Result:

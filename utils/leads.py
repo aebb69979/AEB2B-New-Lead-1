@@ -31,7 +31,7 @@ AE_LOADABLE = [
     "business_description", "registered_capital",
     "address", "sub_district", "district", "province",
     "verified", "evidence_url",
-    "ae_id", "ae_name", "display_order",
+    "ae_id", "ae_name", "ae_region", "display_order",
 ]
 # Never loaded. `registration_number` is the traceability field; the rest would
 # name the arm outright.
@@ -296,6 +296,31 @@ def leads_for(df: pd.DataFrame, ae_id) -> pd.DataFrame:
         out = out.assign(_o=pd.to_numeric(out["display_order"], errors="coerce")) \
                  .sort_values("_o").drop(columns="_o")
     return out.reset_index(drop=True)
+
+
+def parse_regions(value) -> list[str]:
+    """'BMA-East', 'Northeast1; Northeast2' or an already-split list -> a list."""
+    if isinstance(value, (list, tuple, set)):
+        return [str(x).strip() for x in value if str(x).strip()]
+    return parse_ae_ids(value)
+
+
+def team_for(df: pd.DataFrame, regions, everyone: bool = False) -> pd.DataFrame:
+    """The one function allowed to select rows for a sales manager.
+
+    A manager sees every AE whose territory touches one of their regions -- an
+    AE spanning Northeast1 and Northeast2 shows for a manager of either.
+    `regions` comes from the verified session record, like `ae_id` in
+    `leads_for`. `everyone` is for administrators. A snapshot published before
+    `ae_region` existed gives a manager nothing rather than everything.
+    """
+    if everyone:
+        return df.reset_index(drop=True)
+    want = set(parse_regions(regions))
+    if not want or "ae_region" not in df.columns:
+        return df.iloc[:0]
+    hit = df["ae_region"].fillna("").map(lambda v: bool(want & set(parse_regions(v))))
+    return df[hit].reset_index(drop=True)
 
 
 def snapshot_label(meta: dict | None, n_rows: int) -> str:

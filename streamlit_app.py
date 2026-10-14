@@ -32,6 +32,7 @@ from utils import bootstrap as boot                    # noqa: E402
 from utils import brand                                # noqa: E402
 from utils import identity as idy
 from utils import leads as L                      # noqa: E402
+from utils.store import is_manager as is_manager_record  # noqa: E402
 
 st.set_page_config(page_title="Leads", page_icon=":material/call:", layout="wide")
 SESSION_KEY = "s"      # query param the Cloudflare shell replays
@@ -189,21 +190,38 @@ if account is None:
 st.session_state["account"] = account
 _bridge(_token())      # refresh the shell's copy
 is_admin = str(account["email"]).lower() in boot.admin_emails()
+is_manager = is_manager_record(account)
 
-pages = {
-    "Summary": [st.Page("app_pages/my_leads.py", title="My leads",
-                        icon=":material/list:", default=True)],
-    "Per-company": [st.Page("app_pages/per_company.py", title="Company view",
-                            icon=":material/apartment:")],
-}
+
+def _team(default: bool = False):
+    return st.Page("app_pages/team.py", title="Team progress", icon=":material/groups:",
+                   default=default)
+
+
+if is_manager and not is_admin:
+    # A manager gets the team page and nothing else. The AE pages would only
+    # say "no territory" -- a manager has no ae_id -- so offering them is noise.
+    pages = {"Team": [_team(default=True)]}
+else:
+    pages = {
+        "Summary": [st.Page("app_pages/my_leads.py", title="My leads",
+                            icon=":material/list:", default=True)],
+        "Per-company": [st.Page("app_pages/per_company.py", title="Company view",
+                                icon=":material/apartment:")],
+    }
 if is_admin:
+    pages["Team"] = [_team()]
     pages["Admin"] = [st.Page("app_pages/admin.py", title="Accounts",
                               icon=":material/admin_panel_settings:")]
 
 with st.sidebar:
     st.subheader(account.get("display_name") or account["email"])
-    _ids = L.parse_ae_ids(account.get("ae_id"))
-    st.caption("Territory " + (", ".join(_ids) if _ids else "— none assigned"))
+    if is_manager:
+        st.caption(":material/groups: Sales manager · "
+                   + (", ".join(L.parse_regions(account.get("regions"))) or "no region"))
+    else:
+        _ids = L.parse_ae_ids(account.get("ae_id"))
+        st.caption("Territory " + (", ".join(_ids) if _ids else "— none assigned"))
     if is_admin:
         st.caption(":material/shield: Administrator")
 

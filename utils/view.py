@@ -18,6 +18,24 @@ NO_SNAPSHOT = ("No lead snapshot is published yet. The control panel's Publish "
                "the service account.")
 
 
+def batch() -> tuple:
+    """(whole snapshot, metadata) for the selected month, or stop the page.
+
+    Unfiltered -- callers narrow it with `leads_for` or `team_for`, the only two
+    functions allowed to select rows for a person.
+    """
+    months = boot.get_months()
+    if not months:
+        st.info(NO_SNAPSHOT, icon=":material/inbox:")
+        st.stop()
+    picked = st.session_state.get("picked_month") or months[0]["id"]
+    df, meta = boot.get_leads(picked)
+    if df is None:
+        st.info(NO_SNAPSHOT, icon=":material/inbox:")
+        st.stop()
+    return df, meta
+
+
 def current(require_leads: bool = True) -> dict:
     """The signed-in AE's rows for the selected month.
 
@@ -25,16 +43,7 @@ def current(require_leads: bool = True) -> dict:
     every caller would otherwise repeat the same four guards.
     """
     account = st.session_state["account"]
-    months = boot.get_months()
-    if not months:
-        st.info(NO_SNAPSHOT, icon=":material/inbox:")
-        st.stop()
-
-    picked = st.session_state.get("picked_month") or months[0]["id"]
-    df, meta = boot.get_leads(picked)
-    if df is None:
-        st.info(NO_SNAPSHOT, icon=":material/inbox:")
-        st.stop()
+    df, meta = batch()
 
     if not str(account.get("ae_id", "")).strip():
         st.info("Your account has no territory assigned, so there are no leads to "

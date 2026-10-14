@@ -401,3 +401,28 @@ def _warm() -> None:
             calls.rows()
     except Exception:                                      # noqa: BLE001
         log.warning("cache warm-up failed; the page will retry", exc_info=True)
+
+
+# --------------------------------------------------------------------------
+# manager views
+# --------------------------------------------------------------------------
+LOCAL_VIEW_LOG = LOCAL_DIR / ".local_view_log.json"
+
+
+@st.cache_resource(show_spinner=False)
+def get_view_log():
+    """Who opened the team page, and when. A tab in the CALL LOG spreadsheet --
+    it is analysis data like the calls, and the identity sheet holds password
+    hashes. None when cloud mode has no call log sheet."""
+    from .calllog import VIEW_COLUMNS, LocalCallLog, SheetsCallLog, ensure_header as _hdr
+    if not has_cloud():
+        return LocalCallLog(LOCAL_VIEW_LOG)
+    if not call_log_sheet_id():
+        return None
+    sh = _gspread_client().open_by_key(call_log_sheet_id())
+    try:
+        ws = sh.worksheet("manager_views")
+    except Exception:                                      # noqa: BLE001
+        ws = sh.add_worksheet("manager_views", rows=2000, cols=len(VIEW_COLUMNS))
+    _hdr(ws, VIEW_COLUMNS)
+    return SheetsCallLog(ws, columns=VIEW_COLUMNS)

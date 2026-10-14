@@ -125,9 +125,10 @@ class SheetsCallLog:
     """Google Sheet backend. `append_row` inserts server-side and Google
     serialises concurrent writers, which is why this never does read-modify-write."""
 
-    def __init__(self, worksheet, ttl: float = 20.0):
+    def __init__(self, worksheet, ttl: float = 20.0, columns: list[str] = LOG_COLUMNS):
         self._ws = worksheet
         self._ttl = ttl
+        self._columns = columns
         self._cache: list[dict] | None = None
         self._at = 0.0
 
@@ -140,19 +141,35 @@ class SheetsCallLog:
     def append(self, row: dict) -> bool:
         if any(str(r.get("row_uuid")) == row["row_uuid"] for r in self.rows(force=True)):
             return False
-        self._ws.append_row([str(row.get(c, "")) for c in LOG_COLUMNS],
+        self._ws.append_row([str(row.get(c, "")) for c in self._columns],
                             value_input_option="RAW")
         self._cache = None
         return True
 
 
-def ensure_header(worksheet) -> None:
+def ensure_header(worksheet, columns: list[str] = LOG_COLUMNS) -> None:
     try:
         first = worksheet.row_values(1)
     except Exception:                                      # noqa: BLE001
         first = []
     if not first:
-        worksheet.update([LOG_COLUMNS], "A1", value_input_option="RAW")
+        worksheet.update([columns], "A1", value_input_option="RAW")
+
+
+# --------------------------------------------------------------------------
+# manager views
+# --------------------------------------------------------------------------
+# One row each time a sales manager opens the team page for a batch, once per
+# browser session. A manager watching is itself an intervention -- an AE whose
+# SM checks daily may dial differently from one whose SM never looks -- so the
+# analysis needs to know who looked, and when, to separate that from the AE.
+VIEW_COLUMNS = ["row_uuid", "logged_at", "viewer_email", "regions", "batch", "app_version"]
+
+
+def new_view(viewer_email: str, regions: str, batch: str) -> dict:
+    return {"row_uuid": str(uuid.uuid4()), "logged_at": timefmt.stamp(),
+            "viewer_email": viewer_email, "regions": regions, "batch": batch,
+            "app_version": APP_VERSION}
 
 
 # --------------------------------------------------------------------------
@@ -216,3 +233,18 @@ def ae_dials(rows: list[dict], ae_id_list: list[str]) -> int:
     """Total dials logged by this AE -- the input to the day-21 projection."""
     ids = {str(a) for a in ae_id_list}
     return sum(1 for r in latest_attempts(rows) if str(r.get("ae_id")) in ids)
+
+
+def disposition_counts(rows: list[dict], lead_ids: list[str]) -> dict[str, dict[str, int]]:
+    """Per lead: how many of its attempts ended in each disposition.
+
+    Counts ATTEMPTS, after corrections (latest row per attempt), so a dial typed
+    wrong and re-logged counts once, under its corrected outcome.
+    """
+    out = {str(i): {} for i in lead_ids}
+    for r in latest_attempts(rows):
+        lid = str(r.get("lead_id"))
+        if lid in out:
+            d = str(r.get("disposition"))
+            out[lid][d] = out[lid].get(d, 0) + 1
+    return out

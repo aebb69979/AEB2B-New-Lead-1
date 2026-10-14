@@ -18,9 +18,15 @@ from . import timefmt
 COLUMNS = [
     "email", "ae_id", "display_name", "password_hash", "status",
     "created_at", "approved_at", "failed_attempts", "locked_until",
-    "session_nonce",
+    "session_nonce", "role", "regions",
 ]
 PENDING, APPROVED, DISABLED = "pending", "approved", "disabled"
+# role: blank is an AE (every account written before roles existed). A manager
+# has no ae_id -- so the AE pages, which select by ae_id, show them nothing and
+# they can log no call -- and sees the AEs of `regions` read-only instead.
+AE, MANAGER = "", "manager"
+REGIONS = ["BMA-East", "BMA-West", "Central-West", "East", "North",
+           "Northeast1", "Northeast2", "South"]
 
 
 def blank_record(email: str, password_hash: str, nonce: str,
@@ -30,7 +36,12 @@ def blank_record(email: str, password_hash: str, nonce: str,
         "password_hash": password_hash, "status": PENDING,
         "created_at": timefmt.text(), "approved_at": "",
         "failed_attempts": "0", "locked_until": "", "session_nonce": nonce,
+        "role": AE, "regions": "",
     }
+
+
+def is_manager(record: dict | None) -> bool:
+    return bool(record) and str(record.get("role", "")).strip().lower() == MANAGER
 
 
 class IdentityStore(Protocol):
@@ -141,3 +152,13 @@ def ensure_header(worksheet) -> None:
         first = []
     if not first:
         worksheet.update([COLUMNS], "A1", value_input_option="RAW")
+    elif first == COLUMNS[:len(first)] and len(first) < len(COLUMNS):
+        # A sheet made before a column was added. Columns only ever go on the
+        # END, so extending the header in place keeps every existing row valid;
+        # without it get_all_records drops the new fields and writes land under
+        # a blank header. The tab was created exactly as wide as the old header,
+        # so it has to grow first or the write falls outside the grid.
+        if getattr(worksheet, "col_count", len(COLUMNS)) < len(COLUMNS):
+            worksheet.add_cols(len(COLUMNS) - worksheet.col_count)
+        worksheet.update([COLUMNS[len(first):]], f"{_col_letter(len(first) + 1)}1",
+                         value_input_option="RAW")
