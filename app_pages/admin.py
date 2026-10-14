@@ -45,8 +45,10 @@ def _role_inputs(key: str, rec: dict, where) -> tuple[str, str, list]:
 
 
 def _apply(email: str, role: str, ae_id: str, regs: list):
-    return (acc.approve_manager(store, email, regs) if role == ROLES[1]
-            else acc.approve(store, email, ae_id))
+    res = (acc.approve_manager(store, email, regs) if role == ROLES[1]
+           else acc.approve(store, email, ae_id))
+    boot.managers_by_region.clear()      # the team page's SM column
+    return res
 
 
 for r in pending:

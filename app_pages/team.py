@@ -39,6 +39,7 @@ regions = L.parse_regions(account.get("regions"))
 if is_admin and not is_manager(account):
     regions = st.pills("Regions", REGIONS, selection_mode="multi", default=REGIONS,
                        key="team_regions")
+regions = [r for r in REGIONS if r in regions]             # display order
 team = L.team_for(df, regions)
 
 st.caption(f"{', '.join(regions) or 'No region'} · {meta['label']}"
@@ -123,7 +124,16 @@ def _pace(r) -> str:
 
 
 ae["pace"] = [_pace(r) for _, r in ae.iterrows()]
-ae = ae.sort_values(["vacant", "ae_region", "ae_name"]).reset_index(drop=True)
+
+# Each region's SM, from the approved manager accounts. An AE spanning two
+# regions (Northeast1; Northeast2) shows the managers of both, once each.
+_sms = boot.managers_by_region()
+ae["sm"] = [", ".join(dict.fromkeys(n for reg in L.parse_regions(r) for n in _sms.get(reg, [])))
+            or "—" for r in ae["ae_region"]]
+_order = {r: i for i, r in enumerate(REGIONS)}
+ae["_r"] = [min((_order.get(x, 99) for x in L.parse_regions(r)), default=99)
+            for r in ae["ae_region"]]
+ae = ae.sort_values(["_r", "ae_region", "vacant", "ae_name"]).reset_index(drop=True)
 
 # --------------------------------------------------------------------------
 # headline
@@ -140,19 +150,29 @@ m.metric("Dials logged", int(staffed["dials"].sum()))
 # --------------------------------------------------------------------------
 # by AE
 # --------------------------------------------------------------------------
-st.subheader("By AE")
+head, opt = st.columns([3, 1], vertical_alignment="bottom")
+head.subheader("By SM / AE")
+grouped = opt.toggle("Group by Region", value=True, key="team_group")
 st.caption("Outcome columns count dials, so one lead called three times adds three. "
            f"Floor met: the lead was contacted or tried {cl.MIN_ATTEMPTS} times.")
 outcome_cfg = {code: st.column_config.NumberColumn(code.replace("_", " ").capitalize(),
                                                    help=d, width="small")
                for d, code in CODES.items()}
+shown = ae.copy()
+if grouped:
+    # Region and SM on the first row of each region only, like a pivot table.
+    first = ~shown["ae_region"].duplicated()
+    shown.loc[~first, ["ae_region", "sm"]] = ""
 st.dataframe(
-    ae[["ae_name", "ae_region", "pace", "leads", "started", "floor_share", "contacted",
-        "dials", *CODES.values(), "last_call"]],
+    shown[["ae_region", "sm", "ae_name", "pace", "leads", "started", "floor_share",
+           "contacted", "dials", *CODES.values(), "last_call"]],
     hide_index=True, width="stretch",
     column_config={
-        "ae_name": st.column_config.TextColumn("AE", width="medium"),
         "ae_region": st.column_config.TextColumn("Region", width="small"),
+        "sm": st.column_config.TextColumn("SM", width="medium",
+                                          help="The approved sales manager account(s) "
+                                               "for this region."),
+        "ae_name": st.column_config.TextColumn("AE", width="medium"),
         "pace": st.column_config.TextColumn(
             "Pace", width="medium",
             help=f"Projected from dials so far against {cl.MIN_ATTEMPTS} dials per "

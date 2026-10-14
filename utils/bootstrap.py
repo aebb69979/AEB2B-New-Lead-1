@@ -426,3 +426,22 @@ def get_view_log():
         ws = sh.add_worksheet("manager_views", rows=2000, cols=len(VIEW_COLUMNS))
     _hdr(ws, VIEW_COLUMNS)
     return SheetsCallLog(ws, columns=VIEW_COLUMNS)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def managers_by_region() -> dict[str, list[str]]:
+    """region -> names of the approved sales managers over it.
+
+    Read from the account store rather than written into the code: this repo is
+    public, and who manages which region changes with HR, not with a deploy.
+    Cached because `all_records` reads the sheet on every call and the team
+    page reruns on every click.
+    """
+    from .store import APPROVED, is_manager
+    from . import leads as L
+    out: dict[str, list[str]] = {}
+    for r in get_store().all_records():
+        if is_manager(r) and str(r.get("status", "")).strip().lower() == APPROVED:
+            for reg in L.parse_regions(r.get("regions")):
+                out.setdefault(reg, []).append(r.get("display_name") or r["email"])
+    return out
