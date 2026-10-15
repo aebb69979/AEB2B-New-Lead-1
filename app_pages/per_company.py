@@ -282,8 +282,10 @@ with st.container(border=True):
     uk = f"uuid_{k}"
     st.session_state.setdefault(uk, str(uuid.uuid4()))
 
+    # An admin viewing as an AE must not write under the AE's territory.
+    read_only = bool(st.session_state.get("viewing_as"))
     if st.button("Save attempt", type="primary", key=f"save_{k}",
-                 disabled=disp is None):
+                 disabled=disp is None or read_only):
         row = cl.new_row(
             lead_id=lead_id, ae_id=account["ae_id"], ae_email=account["email"],
             batch=meta.get("name", ""), attempt_seq=seq,
@@ -296,7 +298,9 @@ with st.container(border=True):
         st.toast("Attempt saved" if fresh else "Already saved",
                  icon=":material/check:")
         st.rerun()
-    if disp is None:
+    if read_only:
+        st.caption(":material/visibility: Viewing as this AE: read-only, nothing is saved.")
+    elif disp is None:
         st.caption("Choose an outcome to save.")
 
 st.caption(":material/info: A mistake is fixed by logging the same attempt "

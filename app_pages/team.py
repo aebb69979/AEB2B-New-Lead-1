@@ -25,7 +25,9 @@ from utils import view as V
 from utils.store import REGIONS, is_manager
 
 account = st.session_state["account"]
-is_admin = str(account["email"]).lower() in boot.admin_emails()
+# An admin viewing as an SM sees the SM's page, not the admin's.
+is_admin = (str(account["email"]).lower() in boot.admin_emails()
+            and not st.session_state.get("viewing_as"))
 if not (is_manager(account) or is_admin):
     st.error("This page is for sales managers.", icon=":material/block:")
     st.stop()
@@ -58,7 +60,9 @@ if not len(team):
 # One row per manager per batch per browser session -- not per rerun, which
 # would be every click.
 _seen = f"_viewed_{meta['id']}"
-if is_manager(account) and not st.session_state.get(_seen):
+# Not for an admin viewing as an SM: that view was the admin's, not the manager's.
+if (is_manager(account) and not st.session_state.get("viewing_as")
+        and not st.session_state.get(_seen)):
     views = boot.get_view_log()
     if views is not None:
         try:

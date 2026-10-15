@@ -32,6 +32,7 @@ from utils import bootstrap as boot                    # noqa: E402
 from utils import brand                                # noqa: E402
 from utils import identity as idy
 from utils import leads as L                      # noqa: E402
+from utils.store import AE, MANAGER, REGIONS              # noqa: E402
 from utils.store import is_manager as is_manager_record  # noqa: E402
 
 st.set_page_config(page_title="Leads", page_icon=":material/call:", layout="wide")
@@ -187,10 +188,66 @@ if account is None:
 # --------------------------------------------------------------------------
 # signed in
 # --------------------------------------------------------------------------
-st.session_state["account"] = account
 _bridge(_token())      # refresh the shell's copy
 is_admin = str(account["email"]).lower() in boot.admin_emails()
+
+# --------------------------------------------------------------------------
+# administrator: view as any AE or SM
+# --------------------------------------------------------------------------
+# The pages read the account from session_state, so viewing as someone is just
+# handing them a stand-in record: the admin's own, with the AE's territory or
+# the SM's region swapped in. The admin's email stays on it, and `viewing_as`
+# makes the view READ-ONLY -- Company view will not save an attempt, and Team
+# progress records no manager view -- because a row written here would be an
+# admin's click filed under an AE's territory or a manager's name.
+SELF = "self"
+
+
+def _view_as_options() -> dict[str, tuple[str, dict]]:
+    """key -> (label, fields to swap in). AEs come from the batch being viewed,
+    so the list is exactly the territories that have leads."""
+    opts = {SELF: ("Myself (administrator)", {})}
+    months = boot.get_months()
+    if months:
+        picked = st.session_state.get("picked_month") or months[0]["id"]
+        df, _ = boot.get_leads(picked)
+        if df is not None and "ae_id" in df.columns:
+            cols = [c for c in ("ae_region", "ae_name", "ae_id") if c in df.columns]
+            for r in (df[cols].drop_duplicates("ae_id")
+                      .sort_values(cols[:-1] or ["ae_id"]).to_dict("records")):
+                aid = str(r["ae_id"])
+                where = f"{r['ae_region']} · " if r.get("ae_region") else ""
+                opts[f"ae:{aid}"] = (f"AE · {where}{r.get('ae_name') or aid} ({aid})",
+                                     {"ae_id": aid, "role": AE, "regions": "",
+                                      "display_name": r.get("ae_name") or aid})
+    sms = boot.managers_by_region()
+    for reg in REGIONS:
+        who = ", ".join(sms.get(reg, []))
+        opts[f"sm:{reg}"] = (f"SM · {reg}" + (f" ({who})" if who else ""),
+                             {"ae_id": "", "role": MANAGER, "regions": reg,
+                              "display_name": f"SM · {reg}" + (f" ({who})" if who else "")})
+    return opts
+
+
+viewing_as = None
+if is_admin:
+    with st.sidebar:
+        _opts = _view_as_options()
+        if st.session_state.get("view_as") not in _opts:
+            st.session_state["view_as"] = SELF
+        _key = st.selectbox("View as", list(_opts), key="view_as",
+                            format_func=lambda k: _opts[k][0],
+                            help="See the app exactly as this AE or sales manager "
+                                 "does. Read-only: nothing can be logged.")
+    if _key != SELF:
+        viewing_as = _opts[_key][0]
+        account = {**account, **_opts[_key][1]}
+st.session_state["account"] = account
+st.session_state["viewing_as"] = viewing_as
 is_manager = is_manager_record(account)
+# Pages and sidebar follow the person being viewed; the View as picker above
+# is what stays, so the way back is always on screen.
+admin_view = is_admin and not viewing_as
 
 
 def _team(default: bool = False):
@@ -198,7 +255,7 @@ def _team(default: bool = False):
                    default=default)
 
 
-if is_manager and not is_admin:
+if is_manager and not admin_view:
     # A manager gets the team page and nothing else. The AE pages would only
     # say "no territory" -- a manager has no ae_id -- so offering them is noise.
     pages = {"Team": [_team(default=True)]}
@@ -209,20 +266,23 @@ else:
         "Per-company": [st.Page("app_pages/per_company.py", title="Company view",
                                 icon=":material/apartment:")],
     }
-if is_admin:
+if admin_view:
     pages["Team"] = [_team()]
     pages["Admin"] = [st.Page("app_pages/admin.py", title="Accounts",
                               icon=":material/admin_panel_settings:")]
 
 with st.sidebar:
     st.subheader(account.get("display_name") or account["email"])
+    if viewing_as:
+        st.info("Viewing as this person. Read-only: nothing can be logged.",
+                icon=":material/visibility:")
     if is_manager:
         st.caption(":material/groups: Sales manager · "
                    + (", ".join(L.parse_regions(account.get("regions"))) or "no region"))
     else:
         _ids = L.parse_ae_ids(account.get("ae_id"))
         st.caption("Territory " + (", ".join(_ids) if _ids else "— none assigned"))
-    if is_admin:
+    if admin_view:
         st.caption(":material/shield: Administrator")
 
     # Newest first, and the newest is the default. Earlier months stay available
