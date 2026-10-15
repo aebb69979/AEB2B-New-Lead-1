@@ -174,7 +174,7 @@ with right:
                            ("Sub-district", lead.get("sub_district")),
                            ("District", lead.get("district")),
                            ("Province", lead.get("province"))]):
-            st.markdown(f"{k} · {v}")
+            st.markdown(f"**{k}** · {v}")
 
 desc = str(lead.get("business_description", "")).strip()
 if desc and desc != "nan":
@@ -208,7 +208,7 @@ if history:
         # both is the point -- the gap between them is measurable rather than
         # assumed, which is what the shared spreadsheet could never give.
         [{"#": h["attempt_seq"], "Called": h.get("called_at_reported", ""),
-          "Channel": h.get("channel", ""), "Outcome": h.get("disposition", ""),
+          "Channel": cl.CHANNEL_LABELS.get(h.get("channel", ""), h.get("channel", "")), "Outcome": h.get("disposition", ""),
           "Interest": h.get("interest_outcome", ""), "Notes": h.get("notes", ""),
           "Logged": tf.human(h.get("logged_at")), "Logged by": h.get("ae_email", "")}
          for h in history],
@@ -261,6 +261,7 @@ with st.container(border=True):
                      format_func=lambda x: f"{x:%H:%M} ({x.strftime('%I:%M %p').lstrip('0')})",
                      help="Time of day the call was made. Type to search, e.g. 14:3.")
     ch = c3.selectbox("Channel", cl.CHANNELS, key=f"ch_{k}",
+                      format_func=lambda c: cl.CHANNEL_LABELS.get(c, c),
                       index=cl.CHANNELS.index(was["channel"])
                       if was.get("channel") in cl.CHANNELS else 0)
 

@@ -45,7 +45,13 @@ DISPOSITIONS = [
     "ไม่ใช่บริษัท (not_a_business)",
 ]
 INTEREST = ["สนใจ (interested)", "ไม่สนใจ (not_interested)"]
-CHANNELS = ["phone", "line", "email"]
+# Stored value -> label shown to the AE. Values are what the log keeps, so an
+# existing value is never renamed; new channels are only appended.
+CHANNEL_LABELS = {
+    "phone": "Phone", "line": "LINE", "email": "Email",
+    "facebook": "Facebook", "instagram": "Instagram", "in_person": "In-person visit",
+}
+CHANNELS = list(CHANNEL_LABELS)
 CONNECTED = DISPOSITIONS[0]
 MIN_ATTEMPTS = 3          # the floor, not a cap
 
