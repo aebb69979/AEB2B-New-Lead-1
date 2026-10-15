@@ -19,9 +19,16 @@ prog = V.progress_for(mine)
 
 st.header("Summary")
 
-st.caption(f"{len(mine)} leads · territory {account['ae_id']} · {meta['label']}"
+# A wrapping row, not st.columns([3, 1]): a fixed quarter-width column cut the
+# filter off ("Done" vanished) whenever the sidebar was open. Sized to its
+# content, the filter keeps all four options and drops below the caption
+# only when the screen is too narrow for both.
+top = st.container(horizontal=True, vertical_alignment="bottom")
+left = top.container(width="stretch")
+right = top.container(width="content")
+left.caption(f"{len(mine)} leads · territory {account['ae_id']} · {meta['label']}"
              + (f" · {state['label']}" if state["known"] else ""))
-V.window_note(state, st.caption)
+V.window_note(state, left.caption)
 
 # --------------------------------------------------------------------------
 # where this AE stands
@@ -69,9 +76,7 @@ if SHOW_VERIFIED:
 # lead age track how far down the list they got.
 FILTERS = {"All": None, "Not started": "Not started",
            "In progress": "In progress", "Done": ("Floor met", "Contacted")}
-# Its own full-width row: squeezed into a side column, "Done" was cut off
-# whenever the sidebar was open.
-pick = st.segmented_control("Show", list(FILTERS), default="All", key="lead_filter")
+pick = right.segmented_control("Show", list(FILTERS), default="All", key="lead_filter")
 want = FILTERS.get(pick or "All")
 if isinstance(want, tuple):
     view = view[view["status"].isin(want)]
