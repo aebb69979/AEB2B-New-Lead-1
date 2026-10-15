@@ -19,10 +19,9 @@ prog = V.progress_for(mine)
 
 st.header("Summary")
 
-left, right = st.columns([3, 1])
-left.caption(f"{len(mine)} leads · territory {account['ae_id']} · {meta['label']}"
+st.caption(f"{len(mine)} leads · territory {account['ae_id']} · {meta['label']}"
              + (f" · {state['label']}" if state["known"] else ""))
-V.window_note(state, left.caption)
+V.window_note(state, st.caption)
 
 # --------------------------------------------------------------------------
 # where this AE stands
@@ -70,7 +69,9 @@ if SHOW_VERIFIED:
 # lead age track how far down the list they got.
 FILTERS = {"All": None, "Not started": "Not started",
            "In progress": "In progress", "Done": ("Floor met", "Contacted")}
-pick = right.segmented_control("Show", list(FILTERS), default="All", key="lead_filter")
+# Its own full-width row: squeezed into a side column, "Done" was cut off
+# whenever the sidebar was open.
+pick = st.segmented_control("Show", list(FILTERS), default="All", key="lead_filter")
 want = FILTERS.get(pick or "All")
 if isinstance(want, tuple):
     view = view[view["status"].isin(want)]

@@ -174,7 +174,7 @@ with right:
                            ("Sub-district", lead.get("sub_district")),
                            ("District", lead.get("district")),
                            ("Province", lead.get("province"))]):
-            st.markdown(f"**{k}** · {v}")
+            st.markdown(f"{k} · {v}")
 
 desc = str(lead.get("business_description", "")).strip()
 if desc and desc != "nan":
