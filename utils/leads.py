@@ -264,6 +264,48 @@ def load_from_drive(service_account_info: dict, folder_id: str,
 
 
 # --------------------------------------------------------------------------
+# company status, from the final lead file
+# --------------------------------------------------------------------------
+# tools/build_final.py stacks the CCP+ (and later CRM) mapping onto a lead file
+# as `<stem>_final.csv`. The snapshot itself is never republished for this, so
+# the app reads the one column it shows from that file, joined on lead_id. Only
+# these columns are parsed; the AE owner's contact details in it are not.
+FINAL_COLS = ["lead_id", "Company Status"]
+COMPANY_STATUSES = {"New", "Existing"}
+
+
+def final_name(snapshot_name: str) -> str:
+    """'m1_leads_2026-10-14.csv' -> 'm1_leads_2026-10-14_final.csv'."""
+    return snapshot_name[:-len(".csv")] + "_final.csv"
+
+
+def read_company_status(raw: bytes) -> dict[str, str]:
+    """lead_id -> 'New' / 'Existing'. Anything else (unchecked, error) is left out."""
+    df = pd.read_csv(io.BytesIO(raw), dtype=str, keep_default_na=False,
+                     usecols=lambda c: c in FINAL_COLS)
+    if not set(FINAL_COLS) <= set(df.columns):
+        return {}
+    return {r["lead_id"]: r["Company Status"] for r in df.to_dict("records")
+            if r["Company Status"] in COMPANY_STATUSES}
+
+
+def find_named(service_account_info: dict, folder_ids: list[str], name: str) -> dict | None:
+    """The newest file called `name` in any of these folders, or None."""
+    sess = _session(service_account_info)
+    best = None
+    for fid in folder_ids:
+        q = f"'{fid}' in parents and trashed = false and name = '{name}'"
+        r = sess.get(DRIVE_FILES, params={
+            "q": q, "fields": "files(id,name,modifiedTime)", "pageSize": 10,
+            "supportsAllDrives": True, "includeItemsFromAllDrives": True})
+        r.raise_for_status()
+        for f in r.json().get("files", []):
+            if best is None or f["modifiedTime"] > best["modifiedTime"]:
+                best = f
+    return best
+
+
+# --------------------------------------------------------------------------
 # per-AE view
 # --------------------------------------------------------------------------
 def parse_ae_ids(value) -> list[str]:

@@ -173,7 +173,9 @@ with left:
 with right:
     with st.container(border=True):
         st.markdown("**Company**")
-        for k, v in _rows([("Business ID", lead.get("registration_number")),
+        status = boot.get_company_status(meta.get("name", "")).get(lead_id, "")
+        for k, v in _rows([("Company status", status),
+                           ("Business ID", lead.get("registration_number")),
                            ("Registered capital", _money(lead.get("registered_capital"))),
                            ("Address", lead.get("address")),
                            ("Sub-district", lead.get("sub_district")),

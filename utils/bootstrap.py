@@ -284,6 +284,38 @@ def get_leads(file_id: str | None = None):
         L.download(dict(secret("gcp_service_account")), meta["id"])), meta
 
 
+# Local mode: where tools/build_final.py writes, from either launch directory.
+LOCAL_FINAL_DIRS = [Path("Final_leads"), Path("../Final_leads"),
+                    Path(__file__).resolve().parent.parent.parent / "Final_leads"]
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_company_status(snapshot_name: str) -> dict[str, str]:
+    """lead_id -> 'New' / 'Existing' for one batch, from its `_final.csv`.
+
+    Short TTL: the final file is rebuilt as mappings finish, and a re-upload
+    should show up without a reboot. Looked for in `final_folder_id` (the Final
+    Leads Dataset folder, if set) and the snapshot folder. Missing or unreadable
+    means no status shown, never a broken page.
+    """
+    from . import leads as L
+    name = L.final_name(snapshot_name)
+    try:
+        if not has_cloud():
+            for d in LOCAL_FINAL_DIRS:
+                if (d / name).exists():
+                    return L.read_company_status((d / name).read_bytes())
+            return {}
+        sa = dict(secret("gcp_service_account"))
+        folders = [str(f) for f in (secret("final_folder_id", ""), secret("drive_folder_id"))
+                   if f]
+        f = L.find_named(sa, folders, name)
+        return L.read_company_status(L.download(sa, f["id"])) if f else {}
+    except Exception:                                      # noqa: BLE001
+        _logging.getLogger(__name__).warning("company status unavailable", exc_info=True)
+        return {}
+
+
 def setup_problems() -> list[str]:
     """What is missing, for the admin page. Better to say so plainly than to let
     a misconfigured deployment fail one login at a time."""
