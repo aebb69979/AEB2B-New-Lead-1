@@ -40,11 +40,11 @@ floor_met = sum(1 for p in prog.values() if p["floor_met"])
 connected = sum(1 for p in prog.values() if p["connected"])
 
 m = st.container(horizontal=True)
-m.metric("Leads", len(mine))
-m.metric("Started", f"{started} / {len(mine)}")
-m.metric(f"{cl.MIN_ATTEMPTS}-attempt floor met", f"{floor_met} / {len(mine)}")
-m.metric("Contact made", connected)
-m.metric("Dials logged", attempts)
+m.metric("Leads", len(mine), border=True)
+m.metric("Started", f"{started} / {len(mine)}", border=True)
+m.metric(f"{cl.MIN_ATTEMPTS}-attempt floor met", f"{floor_met} / {len(mine)}", border=True)
+m.metric("Contact made", connected, border=True)
+m.metric("Dials logged", attempts, border=True)
 
 # --------------------------------------------------------------------------
 # the table
@@ -107,12 +107,20 @@ if not len(view):
 
 ids_shown = [str(i) for i in mine.loc[view.index, "lead_id"]]
 
+# Status as a coloured pill. Filtering above works on the plain string; only
+# the copy that is drawn gets the one-item list a pill column needs.
+shown_view = view.assign(status=[[x] for x in view["status"]])
 event = st.dataframe(
-    view, hide_index=True, width="stretch", height=560,
+    shown_view, hide_index=True, width="stretch", height=560,
     on_select="rerun", selection_mode="single-row", key="lead_table",
     column_config={
-        "status": st.column_config.TextColumn("Status", width="small"),
-        "attempts": st.column_config.NumberColumn("Tries", width="small"),
+        "status": st.column_config.MultiselectColumn(
+            "Status", width=110, options=list(V.LEAD_STATUS_COLOR),
+            color=list(V.LEAD_STATUS_COLOR.values())),
+        "attempts": st.column_config.ProgressColumn(
+            "Tries", width="small", min_value=0, max_value=cl.MIN_ATTEMPTS,
+            format=f"%d/{cl.MIN_ATTEMPTS}",
+            help=f"Dials logged against the {cl.MIN_ATTEMPTS}-attempt floor."),
         "company_name": st.column_config.TextColumn("Company", width="large"),
         "company_status": st.column_config.MultiselectColumn(
             "Company status", width=110, options=list(V.STATUS_COLOR),

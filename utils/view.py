@@ -79,6 +79,11 @@ def window_note(state: dict, write) -> None:
         write(f":material/schedule: {state['days_left']} days until the cutoff.")
 
 
+# Lead progress pills on Summary: grey not begun, orange under way, blue floor
+# cleared, green reached someone.
+LEAD_STATUS_COLOR = {"Not started": "gray", "In progress": "orange",
+                     "Floor met": "blue", "Contacted": "green"}
+
 # Company status badge colours, shared by the Company view and the lead table.
 STATUS_COLOR = {"New": "green", "Existing": "gray"}
 # Dropdown options are plain text, so a coloured dot stands in for the badge.

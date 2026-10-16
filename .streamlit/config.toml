@@ -1,6 +1,30 @@
+# True brand, clean. Red is the accent (buttons, selected filters, progress);
+# BUTTON_RED in utils/brand.py, one step deeper than the logo red so white text
+# on it clears WCAG AA. Teal, the old accent, stays on links.
 [theme]
-primaryColor = "#00879b"
 base = "light"
+primaryColor = "#d71920"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f5f7"
+textColor = "#1f2430"
+borderColor = "#e2e5e9"
+showWidgetBorder = true
+linkColor = "#00879b"
+linkUnderline = false
+baseRadius = "0.6rem"
+buttonRadius = "0.6rem"
+# One family for Latin and Thai, so company names do not switch typeface
+# mid-line the way the default font falls back for Thai.
+font = "'IBM Plex Sans Thai':https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap"
+headingFont = "'IBM Plex Sans Thai':https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@500;600;700&display=swap"
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+dataframeHeaderBackgroundColor = "#f4f5f7"
+dataframeBorderColor = "#e2e5e9"
+
+[theme.sidebar]
+backgroundColor = "#f7f8fa"
+secondaryBackgroundColor = "#ffffff"
+borderColor = "#e2e5e9"
 
 [server]
 enableXsrfProtection = true

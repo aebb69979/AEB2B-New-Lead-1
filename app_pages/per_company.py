@@ -157,12 +157,12 @@ def _money(v):
 left, right = st.columns(2)
 with left:
     with st.container(border=True):
-        st.markdown("**Contact**")
+        st.markdown("**:material/call: Contact**")
         got = _rows([("Phone", lead.get("phone")), ("Email", lead.get("email")),
                      ("LINE", lead.get("line_id")), ("Website", lead.get("website")),
                      ("Facebook", lead.get("facebook"))])
         for k, v in got:
-            st.markdown(f"{k} · **{v}**" if k == "Phone" else f"{k} · {v}")
+            st.markdown(f":gray[{k}] · **{v}**" if k == "Phone" else f":gray[{k}] · {v}")
         if not got:
             st.caption("No contact details found for this company.")
         # Where the number came from. A number read off a live Business Profile
@@ -181,19 +181,19 @@ with left:
                 st.caption(":material/error_outline: Not confident. Check before relying on it.")
 with right:
     with st.container(border=True):
-        st.markdown("**Company**")
+        st.markdown("**:material/apartment: Company**")
         for k, v in _rows([("Business ID", lead.get("registration_number")),
                            ("Registered capital", _money(lead.get("registered_capital"))),
                            ("Address", lead.get("address")),
                            ("Sub-district", lead.get("sub_district")),
                            ("District", lead.get("district")),
                            ("Province", lead.get("province"))]):
-            st.markdown(f"{k} · {v}")
+            st.markdown(f":gray[{k}] · {v}")
 
 desc = str(lead.get("business_description", "")).strip()
 if desc and desc != "nan":
     with st.container(border=True):
-        st.markdown("**Business**")
+        st.markdown("**:material/storefront: Business**")
         st.write(desc)
 
 # --------------------------------------------------------------------------
@@ -253,7 +253,8 @@ def _contact_form(current: dict | None = None, prefill: dict | None = None) -> N
         st.rerun()
 
 
-st.subheader("Contact person")
+st.space("small")
+st.subheader(":material/contacts: Contact person")
 if people is None:
     st.caption("Contacts are not configured yet: `call_log_sheet_id` is missing.")
 else:
@@ -285,7 +286,8 @@ else:
 # --------------------------------------------------------------------------
 # attempts so far
 # --------------------------------------------------------------------------
-st.subheader("Call log")
+st.space("small")
+st.subheader(":material/history: Call log")
 V.window_note(state, st.caption)
 
 if log is None:
@@ -360,7 +362,7 @@ with st.container(border=True):
                                    else f"Correct attempt {s}"),
             key=f"seq_{lead_id}")
     was = prior.get(seq, {})
-    st.markdown(f"**{'Correct' if was else 'Log'} attempt {seq}**")
+    st.markdown(f"**:material/edit_note: {'Correct' if was else 'Log'} attempt {seq}**")
 
     # Keys carry the attempt number so switching between new and a correction
     # re-initialises every widget from that attempt rather than keeping whatever

@@ -260,30 +260,36 @@ if is_manager and not admin_view:
     # say "no territory" -- a manager has no ae_id -- so offering them is noise.
     pages = {"Team": [_team(default=True)]}
 else:
+    # One section, not a heading per page: "Summary" and "Per-company" each
+    # over a single item read as clutter, not structure.
     pages = {
-        "Summary": [st.Page("app_pages/my_leads.py", title="My leads",
-                            icon=":material/list:", default=True)],
-        "Per-company": [st.Page("app_pages/per_company.py", title="Company view",
-                                icon=":material/apartment:")],
+        "Leads": [st.Page("app_pages/my_leads.py", title="My leads",
+                          icon=":material/format_list_bulleted:", default=True),
+                  st.Page("app_pages/per_company.py", title="Company view",
+                          icon=":material/apartment:")],
     }
 if admin_view:
     pages["Team"] = [_team()]
     pages["Admin"] = [st.Page("app_pages/admin.py", title="Accounts",
                               icon=":material/admin_panel_settings:")]
 
+st.logo(str(brand.ASSETS / "true_logo.png"), size="medium")
 with st.sidebar:
-    st.subheader(account.get("display_name") or account["email"])
+    with st.container(border=True, gap="small"):
+        st.markdown(f"**:material/account_circle: "
+                    f"{account.get('display_name') or account['email']}**")
+        if is_manager:
+            st.caption(":material/groups: Sales manager · "
+                       + (", ".join(L.parse_regions(account.get("regions"))) or "no region"))
+        else:
+            _ids = L.parse_ae_ids(account.get("ae_id"))
+            st.caption(":material/map: Territory "
+                       + (", ".join(_ids) if _ids else "— none assigned"))
+        if admin_view:
+            st.badge("Administrator", icon=":material/shield:", color="gray")
     if viewing_as:
         st.info("Viewing as this person. Read-only: nothing can be logged.",
                 icon=":material/visibility:")
-    if is_manager:
-        st.caption(":material/groups: Sales manager · "
-                   + (", ".join(L.parse_regions(account.get("regions"))) or "no region"))
-    else:
-        _ids = L.parse_ae_ids(account.get("ae_id"))
-        st.caption("Territory " + (", ".join(_ids) if _ids else "— none assigned"))
-    if admin_view:
-        st.caption(":material/shield: Administrator")
 
     # Newest first, and the newest is the default. Earlier months stay available
     # so a batch does not disappear from under an AE the moment the next one is
@@ -310,7 +316,7 @@ with st.sidebar:
             st.query_params.pop("lead", None)
         st.session_state["picked_month"] = _pick
 
-    if st.button("Sign out", icon=":material/logout:", width="stretch"):
+    if st.button("Sign out", icon=":material/logout:", width="stretch", type="tertiary"):
         _sign_out()
         st.rerun()
 
