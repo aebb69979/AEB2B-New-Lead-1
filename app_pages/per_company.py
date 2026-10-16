@@ -17,6 +17,7 @@ import streamlit as st
 
 from utils import bootstrap as boot
 from utils import calllog as cl
+from utils import contacts as CT
 from utils import timefmt as tf
 from utils import view as V
 
@@ -44,7 +45,10 @@ ctx = V.current()
 mine, meta, state = ctx["mine"], ctx["meta"], ctx["state"]
 account = ctx["account"]
 log = boot.get_call_log()
+people = boot.get_contacts()
 n = len(mine)
+# An admin viewing as an AE must not write under the AE's territory.
+read_only = bool(st.session_state.get("viewing_as"))
 
 # --------------------------------------------------------------------------
 # which lead
@@ -184,6 +188,88 @@ if desc and desc != "nan":
         st.write(desc)
 
 # --------------------------------------------------------------------------
+# contact people
+# --------------------------------------------------------------------------
+list_phone = str(lead.get("phone", "")).strip()
+list_phone = "" if list_phone == "nan" else list_phone
+contacts = CT.latest_contacts(people.rows(), lead_id) if people is not None else []
+has_list_contact = any(CT.same_number(c.get("contact_info"), list_phone) for c in contacts)
+
+
+@st.dialog("Contact person")
+def _contact_form(current: dict | None = None, prefill: dict | None = None) -> None:
+    """Add (current None) or edit one contact. Saving appends a version."""
+    c = current or prefill or {}
+    k = f"cf_{(current or {}).get('contact_id', 'new')}"
+    name = st.text_input("Name *", value=str(c.get("name", "")), key=f"{k}_name",
+                         placeholder="Type Unknown if they did not give a name")
+    role = st.text_input("Role", value=str(c.get("role", "")), key=f"{k}_role",
+                         placeholder="e.g. Owner, Accountant, Receptionist")
+    was_t = str(c.get("contact_type", ""))
+    ctype = st.selectbox("Contact type *", CT.TYPES, key=f"{k}_type",
+                         index=CT.TYPES.index(was_t) if was_t in CT.TYPES else 0,
+                         format_func=lambda t: CT.TYPE_LABELS[t])
+    other = ""
+    if ctype == "other":
+        other = st.text_input("Other type *", value=str(c.get("contact_type_other", "")),
+                              key=f"{k}_other", placeholder="e.g. WhatsApp, WeChat")
+    info = st.text_input("Contact info *", value=str(c.get("contact_info", "")),
+                         key=f"{k}_info", placeholder="Number, address or account name")
+    note = st.text_area("Note", value=str(c.get("note", "")), key=f"{k}_note", height=80,
+                        placeholder="e.g. Best reached after 2 pm; decides on telecom")
+
+    row = st.container(horizontal=True)
+    if row.button("Save contact", type="primary", key=f"{k}_save"):
+        missing = [f for f, v in (("Name", name), ("Contact info", info),
+                                  ("Other type", other if ctype == "other" else "x"))
+                   if not str(v).strip()]
+        if missing:
+            st.error(f"Fill in: {', '.join(missing)}.", icon=":material/error:")
+            return
+        people.append(CT.new_row(
+            contact_id=(current or {}).get("contact_id") or CT.new_contact_id(),
+            lead_id=lead_id, ae_id=account["ae_id"], ae_email=account["email"],
+            name=name.strip(), role=role.strip(), contact_type=ctype,
+            contact_type_other=other.strip(), contact_info=info.strip(),
+            note=note.strip()))
+        st.toast("Contact saved", icon=":material/check:")
+        st.rerun()
+    if current and row.button("Remove contact", icon=":material/delete:", key=f"{k}_rm"):
+        people.append(CT.removed_row(current, account["ae_id"], account["email"]))
+        st.toast("Contact removed", icon=":material/check:")
+        st.rerun()
+
+
+st.subheader("Contact person")
+if people is None:
+    st.caption("Contacts are not configured yet: `call_log_sheet_id` is missing.")
+else:
+    for c in contacts:
+        with st.container(border=True, horizontal=True, vertical_alignment="center"):
+            with st.container(gap="small"):
+                role = str(c.get("role", "")).strip()
+                st.markdown(f"**{c.get('name', '')}**" + (f" · {role}" if role else ""))
+                st.markdown(f"{CT.type_label(c)} · {c.get('contact_info', '')}")
+                if str(c.get("note", "")).strip():
+                    st.caption(str(c["note"]))
+            if st.button(":material/edit:", key=f"edit_{c['contact_id']}",
+                         help="Edit or remove", disabled=read_only):
+                _contact_form(current=c)
+    if not contacts:
+        st.caption("No contact people yet. Add whoever you reach, so the next "
+                   "call goes to the right person.")
+
+    actions = st.container(horizontal=True)
+    if actions.button("Add contact", icon=":material/person_add:", key="add_contact",
+                      disabled=read_only):
+        _contact_form()
+    if list_phone and not has_list_contact and actions.button(
+            f"Add as contact: {list_phone}", icon=":material/call:",
+            key="add_list_phone", disabled=read_only,
+            help="Starts a contact with the phone number from our list filled in."):
+        _contact_form(prefill={"contact_type": "phone", "contact_info": list_phone})
+
+# --------------------------------------------------------------------------
 # attempts so far
 # --------------------------------------------------------------------------
 st.subheader("Call log")
@@ -197,6 +283,29 @@ if log is None:
     st.stop()
 
 history = cl.latest_attempts(log.rows(), lead_id)
+
+# Call-log contact options: blank (not said), then the supplied number until
+# someone has been named against it, then the named contacts.
+by_id = {c["contact_id"]: c for c in contacts}
+contact_opts = [""] + ([CT.LIST_PHONE] if list_phone and not has_list_contact else []) \
+    + list(by_id)
+
+
+def contact_name(cid) -> str:
+    cid = str(cid or "")
+    if cid == CT.LIST_PHONE:
+        return f"Number from list {list_phone}"
+    if cid in by_id:
+        return CT.label(by_id[cid])
+    return "Removed contact" if cid else ""
+
+
+def _default_contact() -> str:
+    """The supplied number, or whoever was named against it."""
+    for cid, c in by_id.items():
+        if CT.same_number(c.get("contact_info"), list_phone):
+            return cid
+    return CT.LIST_PHONE if CT.LIST_PHONE in contact_opts else ""
 done = len(history)
 st.caption(f"{done} of {cl.MIN_ATTEMPTS} minimum attempts"
            + (" · contact made" if any(h.get("disposition") == cl.CONNECTED
@@ -210,6 +319,7 @@ if history:
         # assumed, which is what the shared spreadsheet could never give.
         [{"#": h["attempt_seq"], "Called": h.get("called_at_reported", ""),
           "Channel": cl.CHANNEL_LABELS.get(h.get("channel", ""), h.get("channel", "")), "Outcome": h.get("disposition", ""),
+          "Contact": contact_name(h.get("contact_id")),
           "Interest": h.get("interest_outcome", ""), "Notes": h.get("notes", ""),
           "Logged": tf.human(h.get("logged_at")), "Logged by": h.get("ae_email", "")}
          for h in history],
@@ -250,6 +360,22 @@ with st.container(border=True):
         # Bangkok, not the server clock: Community Cloud runs in UTC.
         prev_dt = tf.now().replace(second=0, microsecond=0, tzinfo=None)
 
+    was_c = str(was.get("contact_id", "") or "") if was else _default_contact()
+    opts = contact_opts + ([was_c] if was_c and was_c not in contact_opts else [])
+
+    def _contact_picked(k=k):
+        """Point Channel at the picked contact's type; the AE can still change it."""
+        cid = st.session_state.get(f"ct_{k}")
+        t = CT.LIST_PHONE if cid == CT.LIST_PHONE else str(by_id.get(cid, {}).get("contact_type", ""))
+        ch_for = "phone" if t == CT.LIST_PHONE else CT.TYPE_TO_CHANNEL.get(t)
+        if ch_for:
+            st.session_state[f"ch_{k}"] = ch_for
+
+    st.selectbox("Contact", opts, index=opts.index(was_c), key=f"ct_{k}",
+                 format_func=lambda c: contact_name(c) or "Not specified",
+                 on_change=_contact_picked,
+                 help="Whom this attempt was for. Add people under Contact person above.")
+
     c1, c2, c3 = st.columns([1, 1, 1])
     d = c1.date_input("Call date", value=prev_dt.date(), key=f"d_{k}",
                       format="YYYY-MM-DD")
@@ -283,8 +409,6 @@ with st.container(border=True):
     uk = f"uuid_{k}"
     st.session_state.setdefault(uk, str(uuid.uuid4()))
 
-    # An admin viewing as an AE must not write under the AE's territory.
-    read_only = bool(st.session_state.get("viewing_as"))
     if st.button("Save attempt", type="primary", key=f"save_{k}",
                  disabled=disp is None or read_only):
         row = cl.new_row(
@@ -292,9 +416,10 @@ with st.container(border=True):
             batch=meta.get("name", ""), attempt_seq=seq,
             called_at_reported=f"{d.isoformat()} {t.strftime('%H:%M')}",
             channel=ch, disposition=disp, interest_outcome=interest,
-            notes=notes.strip(), row_uuid=st.session_state[uk])
+            notes=notes.strip(), row_uuid=st.session_state[uk],
+            contact_id=st.session_state.get(f"ct_{k}") or "")
         fresh = log.append(row)
-        for key in (uk, f"n_{k}", f"disp_{k}", f"int_{k}", f"seq_{lead_id}"):
+        for key in (uk, f"n_{k}", f"disp_{k}", f"int_{k}", f"seq_{lead_id}", f"ct_{k}"):
             st.session_state.pop(key, None)
         st.toast("Attempt saved" if fresh else "Already saved",
                  icon=":material/check:")

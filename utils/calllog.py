@@ -59,13 +59,17 @@ LOG_COLUMNS = [
     "row_uuid", "lead_id", "ae_id", "ae_email", "batch", "attempt_seq",
     "logged_at", "called_at_reported", "channel", "disposition",
     "interest_outcome", "notes", "app_version",
+    # Added later, so on the END: whom the attempt reached (utils.contacts).
+    # Blank on older rows and when the AE did not say.
+    "contact_id",
 ]
 APP_VERSION = "ae-app-1"
 
 
 def new_row(lead_id: str, ae_id: str, ae_email: str, batch: str, attempt_seq: int,
             called_at_reported: str, channel: str, disposition: str,
-            interest_outcome: str, notes: str, row_uuid: str | None = None) -> dict:
+            interest_outcome: str, notes: str, row_uuid: str | None = None,
+            contact_id: str = "") -> dict:
     """One attempt. `logged_at` is set HERE, never taken from the caller."""
     return {
         "row_uuid": row_uuid or str(uuid.uuid4()),
@@ -76,6 +80,7 @@ def new_row(lead_id: str, ae_id: str, ae_email: str, batch: str, attempt_seq: in
         "channel": channel, "disposition": disposition,
         "interest_outcome": interest_outcome, "notes": notes,
         "app_version": APP_VERSION,
+        "contact_id": contact_id,
     }
 
 
@@ -131,16 +136,20 @@ class SheetsCallLog:
     """Google Sheet backend. `append_row` inserts server-side and Google
     serialises concurrent writers, which is why this never does read-modify-write."""
 
-    def __init__(self, worksheet, ttl: float = 20.0, columns: list[str] = LOG_COLUMNS):
+    def __init__(self, worksheet, ttl: float = 20.0, columns: list[str] = LOG_COLUMNS,
+                 as_text: bool = False):
         self._ws = worksheet
         self._ttl = ttl
         self._columns = columns
+        # get_all_records turns "0812345678" into the number 812345678. Fine for
+        # attempt numbers; wrong for a tab of phone numbers.
+        self._read = {"numericise_ignore": ["all"]} if as_text else {}
         self._cache: list[dict] | None = None
         self._at = 0.0
 
     def rows(self, force: bool = False) -> list[dict]:
         if force or self._cache is None or time.time() - self._at > self._ttl:
-            self._cache = self._ws.get_all_records()
+            self._cache = self._ws.get_all_records(**self._read)
             self._at = time.time()
         return self._cache
 
@@ -160,6 +169,22 @@ def ensure_header(worksheet, columns: list[str] = LOG_COLUMNS) -> None:
         first = []
     if not first:
         worksheet.update([columns], "A1", value_input_option="RAW")
+    elif first == columns[:len(first)] and len(first) < len(columns):
+        # A tab made before a column was added (see store.ensure_header).
+        # Columns only go on the end, so extending the header keeps every row
+        # valid; the grid has to grow first or the write falls outside it.
+        if getattr(worksheet, "col_count", len(columns)) < len(columns):
+            worksheet.add_cols(len(columns) - worksheet.col_count)
+        worksheet.update([columns[len(first):]], f"{_col_letter(len(first) + 1)}1",
+                         value_input_option="RAW")
+
+
+def _col_letter(n: int) -> str:
+    s = ""
+    while n:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
 
 
 # --------------------------------------------------------------------------

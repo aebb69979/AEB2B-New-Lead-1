@@ -428,6 +428,32 @@ def get_view_log():
     return SheetsCallLog(ws, columns=VIEW_COLUMNS)
 
 
+# --------------------------------------------------------------------------
+# contact people
+# --------------------------------------------------------------------------
+LOCAL_CONTACTS = LOCAL_DIR / ".local_contacts.json"
+
+
+@st.cache_resource(show_spinner=False)
+def get_contacts():
+    """Contact people per lead (utils.contacts). A `contacts` tab in the CALL LOG
+    spreadsheet, created here on first use. None when cloud mode has no call
+    log sheet."""
+    from .calllog import LocalCallLog, SheetsCallLog, ensure_header as _hdr
+    from .contacts import CONTACT_COLUMNS
+    if not has_cloud():
+        return LocalCallLog(LOCAL_CONTACTS)
+    if not call_log_sheet_id():
+        return None
+    sh = _gspread_client().open_by_key(call_log_sheet_id())
+    try:
+        ws = sh.worksheet("contacts")
+    except Exception:                                      # noqa: BLE001
+        ws = sh.add_worksheet("contacts", rows=2000, cols=len(CONTACT_COLUMNS))
+    _hdr(ws, CONTACT_COLUMNS)
+    return SheetsCallLog(ws, columns=CONTACT_COLUMNS, as_text=True)
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def managers_by_region() -> dict[str, list[str]]:
     """region -> names of the approved sales managers over it.
