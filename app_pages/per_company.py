@@ -231,11 +231,15 @@ def _contact_form(current: dict | None = None, prefill: dict | None = None) -> N
             lead_id=lead_id, ae_id=account["ae_id"], ae_email=account["email"],
             name=name.strip(), role=role.strip(), contact_type=ctype,
             contact_type_other=other.strip(), contact_info=info.strip(),
-            note=note.strip()))
+            note=note.strip(), company_name=str(lead.get("company_name", "")),
+            business_id=str(lead.get("registration_number", ""))))
         st.toast("Contact saved", icon=":material/check:")
         st.rerun()
     if current and row.button("Remove contact", icon=":material/delete:", key=f"{k}_rm"):
-        people.append(CT.removed_row(current, account["ae_id"], account["email"]))
+        people.append(CT.removed_row(
+            dict(current, company_name=str(lead.get("company_name", "")),
+                 business_id=str(lead.get("registration_number", ""))),
+            account["ae_id"], account["email"]))
         st.toast("Contact removed", icon=":material/check:")
         st.rerun()
 

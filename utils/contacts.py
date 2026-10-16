@@ -23,6 +23,9 @@ CONTACT_COLUMNS = [
     "row_uuid", "contact_id", "lead_id", "ae_id", "ae_email", "logged_at",
     "name", "role", "contact_type", "contact_type_other", "contact_info", "note",
     "removed", "app_version",
+    # Added later, so on the END (ensure_header extends an existing tab). Only
+    # so the sheet reads on its own; the app keys on lead_id.
+    "company_name", "business_id",
 ]
 APP_VERSION = "ae-app-1"
 
@@ -47,7 +50,8 @@ def new_contact_id() -> str:
 
 def new_row(contact_id: str, lead_id: str, ae_id: str, ae_email: str, name: str,
             role: str, contact_type: str, contact_type_other: str, contact_info: str,
-            note: str, removed: bool = False, row_uuid: str | None = None) -> dict:
+            note: str, removed: bool = False, row_uuid: str | None = None,
+            company_name: str = "", business_id: str = "") -> dict:
     """One version of one contact. `logged_at` is set HERE, never by the caller."""
     return {
         "row_uuid": row_uuid or str(uuid.uuid4()),
@@ -59,6 +63,7 @@ def new_row(contact_id: str, lead_id: str, ae_id: str, ae_email: str, name: str,
         "contact_info": contact_info, "note": note,
         "removed": "1" if removed else "",
         "app_version": APP_VERSION,
+        "company_name": company_name, "business_id": business_id,
     }
 
 
@@ -69,7 +74,8 @@ def removed_row(current: dict, ae_id: str, ae_email: str) -> dict:
                    str(current.get("contact_type", "")),
                    str(current.get("contact_type_other", "")),
                    str(current.get("contact_info", "")), str(current.get("note", "")),
-                   removed=True)
+                   removed=True, company_name=str(current.get("company_name", "")),
+                   business_id=str(current.get("business_id", "")))
 
 
 def latest_contacts(rows: list[dict], lead_id: str) -> list[dict]:
