@@ -79,6 +79,24 @@ def window_note(state: dict, write) -> None:
         write(f":material/schedule: {state['days_left']} days until the cutoff.")
 
 
+# Company status badge colours, shared by the Company view and the lead table.
+STATUS_COLOR = {"New": "green", "Existing": "gray"}
+# Dropdown options are plain text, so a coloured dot stands in for the badge.
+STATUS_DOT = {"New": "🟢", "Existing": "⚪"}
+# st.badge has no size option. Scoped to the one container keyed "status_tag",
+# so no other badge in the app changes.
+STATUS_TAG_CSS = """<style>
+.st-key-status_tag [data-testid="stMarkdownContainer"] > p > span {
+  padding: 0.3rem 1rem; border-radius: 0.5rem; border: 1px solid currentColor;
+}
+.st-key-status_tag [data-testid="stMarkdownContainer"] span {
+  font-size: 1.35rem !important; font-weight: 600; line-height: 1.5;
+}
+</style>"""
+STATUS_HELP = {"New": "No Enterprise AE owns this company in CCP+.",
+               "Existing": "An Enterprise AE already owns this company in CCP+."}
+
+
 def progress_for(mine) -> dict:
     """Attempt progress for these leads, or empty when logging is unconfigured."""
     from . import calllog as cl

@@ -9,6 +9,7 @@ instead of on the screen where the work happens.
 import pandas as pd
 import streamlit as st
 
+from utils import bootstrap as boot
 from utils import calllog as cl
 from utils import leads as L
 from utils import view as V
@@ -25,7 +26,7 @@ st.header("Summary")
 # only when the screen is too narrow for both.
 top = st.container(horizontal=True, vertical_alignment="bottom")
 left = top.container(width="stretch")
-right = top.container(width="content")
+right = top.container(width="content", horizontal=True, vertical_alignment="bottom")
 left.caption(f"{len(mine)} leads · territory {account['ae_id']} · {meta['label']}"
              + (f" · {state['label']}" if state["known"] else ""))
 V.window_note(state, left.caption)
@@ -59,6 +60,12 @@ def _status(p: dict) -> str:
 
 
 view = mine[L.DISPLAY].copy()
+# New / Existing from the batch's final file; no file, no column and no filter.
+company_status = boot.get_company_status(meta.get("name", ""))
+if company_status:
+    view.insert(1, "company_status",
+                [[company_status[i]] if i in company_status else []
+                 for i in mine["lead_id"].astype(str)])
 view.insert(0, "status", [_status(prog[str(i)]) for i in mine["lead_id"]])
 view.insert(1, "attempts", [prog[str(i)]["attempts"] for i in mine["lead_id"]])
 view["last_outcome"] = [prog[str(i)]["last_disposition"] for i in mine["lead_id"]]
@@ -82,9 +89,20 @@ if isinstance(want, tuple):
     view = view[view["status"].isin(want)]
 elif want:
     view = view[view["status"] == want]
+kind = None
+if company_status:
+    # Counts follow the Show filter, so each number is what clicking it shows.
+    n = {"All": len(view), **{k: int(view["company_status"].apply(lambda v, k=k: k in v).sum())
+                              for k in ("New", "Existing")}}
+    kind = right.segmented_control("Company status", ["All", "New", "Existing"], default="All",
+                                   key="company_filter",
+                                   format_func=lambda k: f"{k} · {n[k]}")
+    if kind in ("New", "Existing"):
+        view = view[view["company_status"].apply(lambda v: kind in v)]
 
 if not len(view):
-    st.info(f"Nothing in “{pick}”.", icon=":material/filter_alt:")
+    shown = " · ".join(x for x in (pick, kind) if x and x != "All") or "All"
+    st.info(f"Nothing in “{shown}”.", icon=":material/filter_alt:")
     st.stop()
 
 ids_shown = [str(i) for i in mine.loc[view.index, "lead_id"]]
@@ -96,6 +114,10 @@ event = st.dataframe(
         "status": st.column_config.TextColumn("Status", width="small"),
         "attempts": st.column_config.NumberColumn("Tries", width="small"),
         "company_name": st.column_config.TextColumn("Company", width="large"),
+        "company_status": st.column_config.MultiselectColumn(
+            "Company status", width=110, options=list(V.STATUS_COLOR),
+            color=list(V.STATUS_COLOR.values()),
+            help="New: no Enterprise AE in CCP+. Existing: an Enterprise AE owns it."),
         "registration_number": st.column_config.TextColumn("Business ID", width="medium"),
         "phone": st.column_config.TextColumn("Phone", width="small"),
         "verified": st.column_config.CheckboxColumn(

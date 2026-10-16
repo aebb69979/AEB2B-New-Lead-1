@@ -88,6 +88,7 @@ def _jumped() -> None:
 
 
 prog = V.progress_for(mine)
+company_status = boot.get_company_status(meta.get("name", ""))
 
 
 def _label(i: int) -> str:
@@ -100,7 +101,9 @@ def _label(i: int) -> str:
     mark = f"{p.get('attempts', 0)}/{cl.MIN_ATTEMPTS}"
     if p.get("floor_met"):
         mark += " ✓"        # floor cleared, or contact made and the sequence ended
-    return f"{i + 1}. {mine.iloc[i]['company_name']} · {mark}"
+    s = company_status.get(ids[i], "")
+    tag = f" · {V.STATUS_DOT[s]} {s}" if s else ""
+    return f"{i + 1}. {mine.iloc[i]['company_name']} · {mark}{tag}"
 
 
 bar = st.container(horizontal=True, vertical_alignment="bottom")
@@ -124,7 +127,13 @@ st.query_params["lead"] = lead_id
 # --------------------------------------------------------------------------
 # the company
 # --------------------------------------------------------------------------
-st.header(lead["company_name"])
+status = company_status.get(lead_id, "")
+title = st.container(horizontal=True, vertical_alignment="center", gap="small")
+title.header(lead["company_name"], width="content")
+if status:
+    st.html(V.STATUS_TAG_CSS)
+    title.container(key="status_tag", width="content").badge(
+        status, color=V.STATUS_COLOR[status], help=V.STATUS_HELP[status])
 sub = [str(lead.get(c, "")) for c in ("district", "province") if str(lead.get(c, "")).strip()]
 st.caption(" · ".join([x for x in [str(lead.get("name_en", "")).strip()] + sub if x])
            or "—")
@@ -173,9 +182,7 @@ with left:
 with right:
     with st.container(border=True):
         st.markdown("**Company**")
-        status = boot.get_company_status(meta.get("name", "")).get(lead_id, "")
-        for k, v in _rows([("Company status", status),
-                           ("Business ID", lead.get("registration_number")),
+        for k, v in _rows([("Business ID", lead.get("registration_number")),
                            ("Registered capital", _money(lead.get("registered_capital"))),
                            ("Address", lead.get("address")),
                            ("Sub-district", lead.get("sub_district")),
