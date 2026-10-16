@@ -96,6 +96,7 @@ event = st.dataframe(
         "status": st.column_config.TextColumn("Status", width="small"),
         "attempts": st.column_config.NumberColumn("Tries", width="small"),
         "company_name": st.column_config.TextColumn("Company", width="large"),
+        "registration_number": st.column_config.TextColumn("Business ID", width="medium"),
         "phone": st.column_config.TextColumn("Phone", width="small"),
         "verified": st.column_config.CheckboxColumn(
             "Verified", width="small",

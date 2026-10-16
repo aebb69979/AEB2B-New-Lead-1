@@ -6,13 +6,16 @@ pipeline, so the column allowlist is repeated here rather than imported from
 allowlist is enforced twice: as `usecols` at parse time, and as an assertion on
 the loaded frame.
 
-WHY THE ALLOWLIST EXISTS. The snapshot carries `registration_number` for
-traceability. Digits 5-7 of a Thai juristic id are the Buddhist-era registration
-year -- 565 is 2022, 569 is 2026 -- which recovers the cohort for every row. An
-AE who can tell an old lead from a new one works them differently, and effort
-then confounds the age comparison the two arms exist to measure. Reading with
-`usecols` means the column is never parsed into memory, rather than loaded and
-then remembered-not-to-render.
+WHY THE ALLOWLIST EXISTS. Columns that name the arm outright (arm, cohort,
+registration dates, sample weights) must never reach an AE, and reading with
+`usecols` means they are never parsed into memory, rather than loaded and then
+remembered-not-to-render.
+
+`registration_number` is loaded and shown as "Business ID" (decided 2026-10-16,
+so AEs can quote it and look the company up on DBD). Note that digits 5-7 of a
+Thai juristic id are the Buddhist-era registration year -- 565 is 2022, 569 is
+2026 -- so an AE can now tell an old lead from a new one, and the age comparison
+between arms is no longer blind from that date.
 """
 from __future__ import annotations
 
@@ -26,22 +29,21 @@ import pandas as pd
 # Mirrors m1_pipeline.publish.AE_LOADABLE. Keep in step; the assertion below is
 # what catches it if they drift.
 AE_LOADABLE = [
-    "lead_id", "company_name", "name_en",
+    "lead_id", "registration_number", "company_name", "name_en",
     "phone", "email", "line_id", "website", "facebook",
     "business_description", "registered_capital",
     "address", "sub_district", "district", "province",
     "verified", "evidence_url",
     "ae_id", "ae_name", "ae_region", "display_order",
 ]
-# Never loaded. `registration_number` is the traceability field; the rest would
-# name the arm outright.
+# Never loaded: these would name the arm outright.
 FORBIDDEN = [
-    "registration_number", "arm", "cohort", "corrected_registration_date",
+    "arm", "cohort", "corrected_registration_date",
     "register_date", "tranche", "batch", "sample_weight", "sample_weight_norm",
     "stratum_division", "ae_id_frame", "ae_name_frame",
 ]
 # Shown in the lead list, in this order.
-DISPLAY = ["company_name", "phone", "district", "province", "business_description"]
+DISPLAY = ["company_name", "registration_number", "phone", "district", "province", "business_description"]
 
 DRIVE_FILES = "https://www.googleapis.com/drive/v3/files"
 
@@ -105,6 +107,8 @@ def _check(df: pd.DataFrame) -> pd.DataFrame:
             f"snapshot loaded with columns that un-blind the arm: {leaked}. "
             "AE_LOADABLE has drifted from the published file."
         )
+    if "registration_number" not in df.columns:      # snapshot published without it
+        df = df.assign(registration_number="")
     return df
 
 

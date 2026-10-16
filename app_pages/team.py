@@ -92,7 +92,7 @@ def _status(p: dict) -> str:
 
 
 lead = team[["lead_id", "ae_id", "ae_name", "ae_region", "company_name",
-             "district", "province"]].copy()
+             "registration_number", "district", "province"]].copy()
 lead["status"] = [_status(prog[i]) for i in ids]
 lead["attempts"] = [prog[i]["attempts"] for i in ids]
 lead["started"] = lead["attempts"] > 0
@@ -212,11 +212,12 @@ f = st.segmented_control("Show", list(FILTERS), default="All", key="team_filter"
 if FILTERS.get(f or "All"):
     one = one[one["status"].isin(FILTERS[f])]
 st.dataframe(
-    one[["company_name", "district", "province", "status", "attempts",
+    one[["company_name", "registration_number", "district", "province", "status", "attempts",
          "last_outcome", "last_call"]],
     hide_index=True, width="stretch",
     column_config={
         "company_name": st.column_config.TextColumn("Company", width="large"),
+        "registration_number": st.column_config.TextColumn("Business ID", width="medium"),
         "district": st.column_config.TextColumn("District", width="small"),
         "province": st.column_config.TextColumn("Province", width="small"),
         "status": st.column_config.TextColumn("Status", width="small"),
