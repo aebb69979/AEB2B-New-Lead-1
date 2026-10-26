@@ -91,13 +91,29 @@ STATUS_DOT = {"New": "🟢", "Existing": "⚪"}
 # st.badge has no size option. Scoped to the one container keyed "status_tag",
 # so no other badge in the app changes.
 STATUS_TAG_CSS = """<style>
-.st-key-status_tag [data-testid="stMarkdownContainer"] > p > span {
+.st-key-status_tag [data-testid="stMarkdownContainer"] > p > span,
+.st-key-interest_tag [data-testid="stMarkdownContainer"] > p > span {
   padding: 0.3rem 1rem; border-radius: 0.5rem; border: 1px solid currentColor;
 }
-.st-key-status_tag [data-testid="stMarkdownContainer"] span {
+.st-key-status_tag [data-testid="stMarkdownContainer"] span,
+.st-key-interest_tag [data-testid="stMarkdownContainer"] span {
   font-size: 1.35rem !important; font-weight: 600; line-height: 1.5;
 }
 </style>"""
+# Interest from the call log: the answer on the most recent attempt that
+# recorded one (calllog.lead_progress). Blank until someone has said.
+INTEREST_LABEL = {"สนใจ (interested)": "Interest", "ไม่สนใจ (not_interested)": "No interest"}
+INTEREST_EMOJI = {"Interest": "👍", "No interest": "👎"}
+INTEREST_COLOR = {"Interest": "blue", "No interest": "red"}
+INTEREST_HELP = {"Interest": "Interested, on the most recent call that recorded an answer.",
+                 "No interest": "Not interested, on the most recent call that recorded an answer."}
+
+
+def interest_of(p: dict) -> str:
+    """'Interest' / 'No interest' / '' from one lead's progress entry."""
+    return INTEREST_LABEL.get(str((p or {}).get("interest", "")), "")
+
+
 STATUS_HELP = {"New": "No Enterprise AE owns this company in CCP+.",
                "Existing": "An Enterprise AE already owns this company in CCP+."}
 

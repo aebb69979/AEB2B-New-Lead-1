@@ -249,13 +249,18 @@ def lead_progress(rows: list[dict], lead_ids: list[str],
         n = len(rs)
         connected = any(str(r.get("disposition")) == CONNECTED for r in rs)
         last = max(rs, key=lambda r: int(r.get("attempt_seq") or 0)) if rs else None
+        # Interest is asked only on a connected call, so the last attempt is
+        # often blank (a follow-up nobody answered). The company's interest is
+        # the answer on its most recent attempt that recorded one.
+        answered = [r for r in rs if str(r.get("interest_outcome") or "").strip()]
+        said = max(answered, key=lambda r: int(r.get("attempt_seq") or 0)) if answered else None
         out[lid] = {
             "attempts": n,
             "connected": connected,
             "floor_met": bool(connected or n >= floor),
             "last_disposition": str(last.get("disposition")) if last else "",
             "last_logged_at": timefmt.parse(last.get("logged_at")) if last else 0.0,
-            "interest": str(last.get("interest_outcome")) if last else "",
+            "interest": str(said.get("interest_outcome")) if said else "",
         }
     return out
 

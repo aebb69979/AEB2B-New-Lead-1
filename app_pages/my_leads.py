@@ -67,6 +67,10 @@ if company_status:
                 [[company_status[i]] if i in company_status else []
                  for i in mine["lead_id"].astype(str)])
 view.insert(0, "status", [_status(prog[str(i)]) for i in mine["lead_id"]])
+# Yes / No from the most recent attempt that recorded an answer; blank until then.
+_YN = {"Interest": "Yes", "No interest": "No"}
+view.insert(view.columns.get_loc("company_name") + 1, "interest",
+            [[_YN[w]] if (w := V.interest_of(prog[str(i)])) else [] for i in mine["lead_id"]])
 view.insert(1, "attempts", [prog[str(i)]["attempts"] for i in mine["lead_id"]])
 view["last_outcome"] = [prog[str(i)]["last_disposition"] for i in mine["lead_id"]]
 
@@ -126,6 +130,10 @@ event = st.dataframe(
             "Company status", width=110, options=list(V.STATUS_COLOR),
             color=list(V.STATUS_COLOR.values()),
             help="New: no Enterprise AE in CCP+. Existing: an Enterprise AE owns it."),
+        "interest": st.column_config.MultiselectColumn(
+            "Interest", width="small", options=["Yes", "No"], color=["blue", "red"],
+            help="From the most recent call that recorded an interest answer. "
+                 "Blank until someone has said."),
         "registration_number": st.column_config.TextColumn("Business ID", width="medium"),
         "phone": st.column_config.TextColumn("Phone", width="small"),
         "verified": st.column_config.CheckboxColumn(

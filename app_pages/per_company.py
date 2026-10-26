@@ -104,6 +104,8 @@ def _label(i: int) -> str:
         mark += " ✓"        # floor cleared, or contact made and the sequence ended
     s = company_status.get(ids[i], "")
     tag = f" · {V.STATUS_DOT[s]} {s}" if s else ""
+    w = V.interest_of(p)
+    tag += f" · {V.INTEREST_EMOJI[w]} {w}" if w else ""
     return f"{i + 1}. {mine.iloc[i]['company_name']} · {mark}{tag}"
 
 
@@ -131,10 +133,16 @@ st.query_params["lead"] = lead_id
 status = company_status.get(lead_id, "")
 title = st.container(horizontal=True, vertical_alignment="center", gap="small")
 title.header(lead["company_name"], width="content")
-if status:
+said = V.interest_of(prog.get(lead_id, {}))
+if status or said:
     st.html(V.STATUS_TAG_CSS)
+if status:
     title.container(key="status_tag", width="content").badge(
         status, color=V.STATUS_COLOR[status], help=V.STATUS_HELP[status])
+if said:
+    title.container(key="interest_tag", width="content").badge(
+        f"{V.INTEREST_EMOJI[said]} {said}", color=V.INTEREST_COLOR[said],
+        help=V.INTEREST_HELP[said])
 sub = [str(lead.get(c, "")) for c in ("district", "province") if str(lead.get(c, "")).strip()]
 st.caption(" · ".join([x for x in [str(lead.get("name_en", "")).strip()] + sub if x])
            or "—")
@@ -179,7 +187,7 @@ with left:
                 seen = ":material/verified: Read from a public listing"
                 st.caption(f"{seen} · [see it]({url})" if url.startswith("http") else seen)
             else:
-                st.caption(":material/error_outline: Not confident. Check before relying on it.")
+                st.caption(":material/error_outline: Not confident. ควรเช็คก่อนใช้")
 with right:
     with st.container(border=True):
         st.markdown("**:material/apartment: Company**")
@@ -273,7 +281,7 @@ def _contact_form(current: dict | None = None, prefill: dict | None = None) -> N
     c = current or prefill or {}
     k = f"cf_{(current or {}).get('contact_id', 'new')}"
     name = st.text_input("Name *", value=str(c.get("name", "")), key=f"{k}_name",
-                         placeholder="Type Unknown if they did not give a name")
+                         placeholder="ถ้าลูกค้าไม่บอกชื่อ ให้พิมพ์ Unknown")
     role = st.text_input("Role", value=str(c.get("role", "")), key=f"{k}_role",
                          placeholder="e.g. Owner, Accountant, Receptionist")
     was_t = str(c.get("contact_type", ""))
@@ -287,7 +295,7 @@ def _contact_form(current: dict | None = None, prefill: dict | None = None) -> N
     info = st.text_input("Contact info *", value=str(c.get("contact_info", "")),
                          key=f"{k}_info", placeholder="Number, address or account name")
     note = st.text_area("Note", value=str(c.get("note", "")), key=f"{k}_note", height=80,
-                        placeholder="e.g. Best reached after 2 pm; decides on telecom")
+                        placeholder="เช่น ติดต่อได้หลังบ่าย 2 โมง, เป็นคนตัดสินใจเรื่องโทรคมนาคม")
 
     row = st.container(horizontal=True)
     if row.button("Save contact", type="primary", key=f"{k}_save"):
@@ -332,8 +340,8 @@ else:
                          help="Edit or remove", disabled=read_only):
                 _contact_form(current=c)
     if not contacts:
-        st.caption("No contact people yet. Add whoever you reach, so the next "
-                   "call goes to the right person.")
+        st.caption("ยังไม่มีผู้ติดต่อ เพิ่มชื่อคนที่คุยด้วยไว้ "
+                   "เพื่อให้การโทรครั้งถัดไปถึงคนที่ใช่")
 
     actions = st.container(horizontal=True)
     if actions.button("Add contact", icon=":material/person_add:", key="add_contact",
@@ -479,7 +487,7 @@ with st.container(border=True):
                             if was.get("interest_outcome") in cl.INTEREST else None) or ""
     notes = st.text_area("Notes", value=str(was.get("notes", "") or ""), key=f"n_{k}",
                          height=80,
-                         placeholder="Anything worth remembering for the next call.")
+                         placeholder="สิ่งที่ควรจำไว้สำหรับการโทรครั้งถัดไป")
 
     # One id per pending attempt. A double-click, or a rerun that lands mid-write,
     # then resolves to the same row rather than a duplicate dial in the data.
@@ -504,8 +512,8 @@ with st.container(border=True):
     if read_only:
         st.caption(":material/visibility: Viewing as this AE: read-only, nothing is saved.")
     elif disp is None:
-        st.caption("Choose an outcome to save.")
+        st.caption("เลือก outcome เพื่อ save")
 
-st.caption(":material/info: A mistake is fixed by logging the same attempt "
-           "again — the later entry is the one that counts. Nothing is ever "
-           "overwritten, so the history stays intact.")
+st.caption(":material/info: หากบันทึกผิด ให้บันทึก attempt เดิมซ้ำอีกครั้ง "
+           "ระบบจะใช้รายการล่าสุด ข้อมูลเดิมจะไม่ถูกเขียนทับ "
+           "ประวัติทั้งหมดจึงยังอยู่ครบ")
