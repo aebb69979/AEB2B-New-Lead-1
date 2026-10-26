@@ -3,8 +3,9 @@
     day  0   batch issued
     day 21   intervention check — the last point where a behind AE can recover
              without working harder than the plan assumed
-    day 30   soft deadline AND ANALYSIS CUTOFF (was day 45 until 2026-10-14;
-             shortened before m1 was handed out, so no batch ran on 45)
+    day 45   soft deadline AND ANALYSIS CUTOFF (45 at first; 30 from 2026-10-14
+             when m1 was 40 leads per AE; back to 45 on 2026-10-26 once the
+             expansion made it 100 per AE -- all before m1 was handed out)
 
 The cutoff freezes the MEASUREMENT, not the work. Its whole purpose is to stop
 lead age at time of call drifting by AE -- otherwise an AE effect and a lead-age
@@ -21,7 +22,7 @@ NOTHING IS COPIED AT THE CUTOFF. Because the call log is append-only with a
 server-stamped `logged_at`, the frozen view is a filter -- attempts at or before
 `freeze_at`, latest row per (lead_id, attempt_seq) within that window. That is
 reproducible from the live log forever, needs no process to remember, and lets
-day-30 and day-90 views be derived from the same rows whenever they are wanted.
+day-45 and day-90 views be derived from the same rows whenever they are wanted.
 A copied spreadsheet would give exactly one cutoff and could drift from it.
 """
 from __future__ import annotations
@@ -29,8 +30,8 @@ from __future__ import annotations
 import datetime as dt
 
 CHECKPOINT_DAY = 21      # intervention check
-SOFT_DAY = 30            # soft deadline
-FREEZE_DAY = 30          # analysis cutoff
+SOFT_DAY = 45            # soft deadline
+FREEZE_DAY = 45          # analysis cutoff
 
 # Minimum dials a batch implies: every lead gets the 3-attempt floor.
 ATTEMPT_FLOOR = 3
