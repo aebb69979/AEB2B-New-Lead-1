@@ -38,6 +38,8 @@ LOCAL_SNAPSHOT_DIRS = [
     Path("m1_run/output"),                 # launched from the project root
     Path("../m1_run/output"),              # launched from app_ae/
     Path(__file__).resolve().parent.parent.parent / "m1_run" / "output",
+    Path("Final_leads"), Path("../Final_leads"),     # the _final files
+    Path(__file__).resolve().parent.parent.parent / "Final_leads",
 ]
 
 
@@ -245,12 +247,17 @@ def get_months() -> list[dict]:
             k = L.snapshot_sort_key(f.name)
             if k:
                 out.append({"id": str(f), "name": f.name, "month": k[0],
-                            "generated": k[1], "label": L.month_label(f.name),
-                            "modifiedTime": ""})
-        return L.dedupe_months(sorted(out, key=lambda x: (x["month"], x["generated"]),
-                                      reverse=True))
+                            "generated": k[1], "final": L.is_final(f.name),
+                            "label": L.month_label(f.name), "modifiedTime": ""})
+        return L.dedupe_months(L.sort_snapshots(out))
     return L.dedupe_months(L.list_snapshots(dict(secret("gcp_service_account")),
-                                            str(secret("drive_folder_id"))))
+                                            snapshot_folders()))
+
+
+def snapshot_folders() -> list[str]:
+    """The Final Leads folder (if set) and the snapshot folder; months are read
+    from both, so a `_final.csv` in either is picked up."""
+    return [str(f) for f in (secret("final_folder_id", ""), secret("drive_folder_id")) if f]
 
 
 def month_options(months: list[dict]) -> dict:
@@ -307,9 +314,7 @@ def get_company_status(snapshot_name: str) -> dict[str, str]:
                     return L.read_company_status((d / name).read_bytes())
             return {}
         sa = dict(secret("gcp_service_account"))
-        folders = [str(f) for f in (secret("final_folder_id", ""), secret("drive_folder_id"))
-                   if f]
-        f = L.find_named(sa, folders, name)
+        f = L.find_named(sa, snapshot_folders(), name)
         return L.read_company_status(L.download(sa, f["id"])) if f else {}
     except Exception:                                      # noqa: BLE001
         _logging.getLogger(__name__).warning("company status unavailable", exc_info=True)

@@ -19,7 +19,7 @@ import re
 import sys
 
 OK, BAD, WARN = "  [ ok ]", "  [FAIL]", "  [warn]"
-SNAPSHOT_RE = re.compile(r"^m(\d+)_leads_(\d{4}-\d{2}-\d{2})\.csv$")
+SNAPSHOT_RE = re.compile(r"^m(\d+)_leads_(\d{4}-\d{2}-\d{2})(_final)?\.csv$")
 FOLDER_MIME = "application/vnd.google-apps.folder"
 SHEET_MIME = "application/vnd.google-apps.spreadsheet"
 

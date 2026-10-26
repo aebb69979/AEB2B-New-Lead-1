@@ -158,7 +158,16 @@ def _session(service_account_info: dict):
     return sess
 
 
-SNAPSHOT_RE = re.compile(r"^m(\d+)_leads_(\d{4}-\d{2}-\d{2})\.csv$")
+# A month is published as `m<N>_leads_<date>_final.csv` (tools/build_final.py:
+# the lead file plus its CCP+/CRM mapping) or, before that existed, as the plain
+# `m<N>_leads_<date>.csv`. When both exist for the same generation the final one
+# is used. Its mapping columns are not in AE_LOADABLE, so they are never parsed.
+SNAPSHOT_RE = re.compile(r"^m(\d+)_leads_(\d{4}-\d{2}-\d{2})(_final)?\.csv$")
+
+
+def is_final(name: str) -> bool:
+    m = SNAPSHOT_RE.match(name)
+    return bool(m and m.group(3))
 
 
 def snapshot_sort_key(name: str) -> tuple[int, str] | None:
@@ -192,8 +201,8 @@ def month_label(name: str) -> str:
         return f"Month {n}"
 
 
-def list_snapshots(service_account_info: dict, folder_id: str) -> list[dict]:
-    """Every published snapshot in the folder, newest month first.
+def list_snapshots(service_account_info: dict, folder_id: str | list[str]) -> list[dict]:
+    """Every published snapshot in the folder(s), newest month first.
 
     All of them, not just the latest: an AE needs to look back at last month's
     batch, and a month that vanished from the app the moment the next one landed
@@ -204,21 +213,31 @@ def list_snapshots(service_account_info: dict, folder_id: str) -> list[dict]:
     inherits access.
     """
     sess = _session(service_account_info)
-    q = (f"'{folder_id}' in parents and trashed = false "
-         f"and mimeType != 'application/vnd.google-apps.folder'")
-    r = sess.get(DRIVE_FILES, params={
-        "q": q, "fields": "files(id,name,modifiedTime,size)",
-        "pageSize": 200,
-        "supportsAllDrives": True, "includeItemsFromAllDrives": True})
-    r.raise_for_status()
-    out = []
-    for f in r.json().get("files", []):
-        k = snapshot_sort_key(f["name"])
-        if k:
-            out.append({**f, "month": k[0], "generated": k[1],
-                        "label": month_label(f["name"])})
-    # newest month first, and within a month the latest regeneration
-    return sorted(out, key=lambda f: (f["month"], f["generated"]), reverse=True)
+    folders = [folder_id] if isinstance(folder_id, str) else folder_id
+    out, seen = [], set()
+    for fid in folders:
+        q = (f"'{fid}' in parents and trashed = false "
+             f"and mimeType != 'application/vnd.google-apps.folder'")
+        r = sess.get(DRIVE_FILES, params={
+            "q": q, "fields": "files(id,name,modifiedTime,size)",
+            "pageSize": 200,
+            "supportsAllDrives": True, "includeItemsFromAllDrives": True})
+        r.raise_for_status()
+        for f in r.json().get("files", []):
+            k = snapshot_sort_key(f["name"])
+            if k and f["id"] not in seen:
+                seen.add(f["id"])
+                out.append({**f, "month": k[0], "generated": k[1],
+                            "final": is_final(f["name"]),
+                            "label": month_label(f["name"])})
+    return sort_snapshots(out)
+
+
+def sort_snapshots(snaps: list[dict]) -> list[dict]:
+    """Newest month first; within a month the latest regeneration, and for the
+    same generation the final file ahead of the plain one."""
+    return sorted(snaps, key=lambda f: (f["month"], f["generated"], f.get("final", False)),
+                  reverse=True)
 
 
 def dedupe_months(snaps: list[dict]) -> list[dict]:
@@ -235,7 +254,7 @@ def dedupe_months(snaps: list[dict]) -> list[dict]:
     return out
 
 
-def find_latest_snapshot(service_account_info: dict, folder_id: str) -> dict | None:
+def find_latest_snapshot(service_account_info: dict, folder_id: str | list[str]) -> dict | None:
     snaps = list_snapshots(service_account_info, folder_id)
     return snaps[0] if snaps else None
 
@@ -248,7 +267,7 @@ def download(service_account_info: dict, file_id: str) -> bytes:
     return r.content
 
 
-def load_from_drive(service_account_info: dict, folder_id: str,
+def load_from_drive(service_account_info: dict, folder_id: str | list[str],
                     file_id: str | None = None) -> tuple[pd.DataFrame, dict]:
     """One snapshot. `file_id` selects a specific month; default is the newest."""
     if file_id:
@@ -275,7 +294,10 @@ COMPANY_STATUSES = {"New", "Existing"}
 
 
 def final_name(snapshot_name: str) -> str:
-    """'m1_leads_2026-10-14.csv' -> 'm1_leads_2026-10-14_final.csv'."""
+    """'m1_leads_2026-10-14.csv' -> 'm1_leads_2026-10-14_final.csv'; a final
+    file is its own."""
+    if is_final(snapshot_name):
+        return snapshot_name
     return snapshot_name[:-len(".csv")] + "_final.csv"
 
 
