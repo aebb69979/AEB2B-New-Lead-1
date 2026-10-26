@@ -120,8 +120,23 @@ def read_csv_bytes(raw: bytes) -> pd.DataFrame:
     than degrade.
     """
     df = pd.read_csv(io.BytesIO(raw), dtype=str,
-                     usecols=lambda c: c in AE_LOADABLE)
-    return _check(df)
+                     usecols=lambda c: c in AE_LOADABLE or c == CAN_SELL)
+    return _check(sellable(df))
+
+
+# A `_final` file carries the CCP+ verdict on whether a Geo B2B AE may sell to
+# the company (tools/build_final.py; 0 = another Enterprise AE owns it). Only
+# leads marked 1 are served. Blank -- not checked, or the lookup failed -- is
+# not 1, so it is held back too until the lookup is re-run. A plain snapshot has
+# no such column and is served whole, as before the check existed.
+CAN_SELL = "Geo_AE_B2B_can_sell"
+
+
+def sellable(df: pd.DataFrame) -> pd.DataFrame:
+    if CAN_SELL not in df.columns:
+        return df
+    keep = df[CAN_SELL].fillna("").str.strip() == "1"
+    return df[keep].drop(columns=CAN_SELL).reset_index(drop=True)
 
 
 def load_local(path: str | Path) -> pd.DataFrame:
