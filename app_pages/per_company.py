@@ -18,6 +18,7 @@ import streamlit as st
 from utils import bootstrap as boot
 from utils import calllog as cl
 from utils import contacts as CT
+from utils import reco as R
 from utils import timefmt as tf
 from utils import view as V
 
@@ -195,6 +196,67 @@ if desc and desc != "nan":
     with st.container(border=True):
         st.markdown("**:material/storefront: Business**")
         st.write(desc)
+
+# --------------------------------------------------------------------------
+# suggested products
+# --------------------------------------------------------------------------
+def _md(s) -> str:
+    """Card text into markdown as written: prices end in '*' ('เริ่ม 599 บาท/เดือน*'),
+    which would otherwise open an italic run."""
+    return str(s or "").replace("\\", "\\\\").replace("*", "\\*").replace("_", "\\_") \
+        .replace("$", "\\$").replace("~", "\\~")
+
+
+def _bullets(s) -> str:
+    """'• a\n• b' (the workbook's bullets) -> a markdown list."""
+    lines = [ln.strip().lstrip("•").strip() for ln in str(s or "").splitlines() if ln.strip()]
+    return "\n".join(f"- {_md(ln)}" for ln in lines)
+
+
+reco = R.recommend(lead, boot.get_reco_catalogue())
+if reco:
+    with st.container(border=True):
+        st.markdown(f"**:material/recommend: Suggested products** · {reco['count']}")
+        st.markdown(f"**{reco['journey']}** :gray[· {_md(reco['why'])}]")
+        about = []
+        if reco["tier"]:
+            about.append(f"{reco['tier']} company ({reco['tier_help']})")
+        if reco["flags"]:
+            about.append("Description: " + ", ".join(reco["flags"]))
+        if reco["secondary"]:
+            about.append("Also: " + ", ".join(reco["secondary"]))
+        if about:
+            st.caption(" · ".join(about))
+        for category, items in reco["groups"]:
+            st.markdown(f"**{_md(category)}**")
+            for e in items:
+                c = e["card"]
+                label = _md(e["name"]) + (f" · {_md(c['price'])}" if c.get("price") else "")
+                with st.expander(label, icon=":material/star:" if e["size_fit"] else None):
+                    if e["size_fit"]:
+                        st.badge("Fits company size", icon=":material/star:", color="green")
+                    # The primary journey is already in the box header; only the
+                    # other reasons (size, description) say something new here.
+                    extra = [r for r in e["reasons"] if r != reco["journey"]]
+                    if extra:
+                        st.caption("Why: " + " · ".join(_md(r) for r in extra))
+                    if c.get("overview"):
+                        st.write(c["overview"])
+                    # Not `n`: this page is a script, and `n` is the lead count
+                    # the lead picker's callback reads.
+                    for need in e["needs"][:3]:
+                        if need.get("pain_th"):
+                            st.markdown(f":gray[Pain point] · {_md(need['pain_th'].lstrip('• '))}")
+                        if need.get("question_th"):
+                            st.markdown(f":gray[Ask] · **{_md(need['question_th'])}**")
+                    if c.get("selling_points"):
+                        st.markdown(_bullets(c["selling_points"]))
+                    if c.get("commercial_note"):
+                        st.caption(_md(c["commercial_note"]))
+                    if str(c.get("url", "")).startswith("http"):
+                        st.markdown(f"[:material/open_in_new: Product page]({c['url']})")
+        st.caption("แนะนำจากรหัสประเภทธุรกิจ (TSIC) คำอธิบายธุรกิจ และทุนจดทะเบียนของบริษัท "
+                   "ใช้เป็นจุดเริ่มต้น และยืนยันความต้องการของลูกค้าระหว่างการโทร")
 
 # --------------------------------------------------------------------------
 # contact people

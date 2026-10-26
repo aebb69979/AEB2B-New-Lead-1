@@ -35,6 +35,9 @@ AE_LOADABLE = [
     "address", "sub_district", "district", "province",
     "verified", "evidence_url",
     "ae_id", "ae_name", "ae_region", "display_order",
+    # Only in a `_final` file (tools/build_final.py); keys the product
+    # recommendations. Industry is flattened within each arm, so it names neither.
+    "tsic_code",
 ]
 # Never loaded: these would name the arm outright.
 FORBIDDEN = [

@@ -321,6 +321,33 @@ def get_company_status(snapshot_name: str) -> dict[str, str]:
         return {}
 
 
+RECO_CATALOGUE = "reco_catalogue.json"
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_reco_catalogue() -> dict:
+    """The product-recommendation catalogue (tools/build_reco.py), or {}.
+
+    Read from the lead folders, not the repo: the repo is public and the cards
+    carry internal prices. Short TTL so a re-upload shows without a reboot.
+    Missing or unreadable means no Suggested products box, never a broken page --
+    which also makes uploading the file the switch that turns the box on.
+    """
+    from . import leads as L
+    try:
+        if not has_cloud():
+            for d in LOCAL_FINAL_DIRS:
+                if (d / RECO_CATALOGUE).exists():
+                    return json.loads((d / RECO_CATALOGUE).read_text(encoding="utf-8"))
+            return {}
+        sa = dict(secret("gcp_service_account"))
+        f = L.find_named(sa, snapshot_folders(), RECO_CATALOGUE)
+        return json.loads(L.download(sa, f["id"]).decode("utf-8")) if f else {}
+    except Exception:                                      # noqa: BLE001
+        _logging.getLogger(__name__).warning("recommendation catalogue unavailable", exc_info=True)
+        return {}
+
+
 def setup_problems() -> list[str]:
     """What is missing, for the admin page. Better to say so plainly than to let
     a misconfigured deployment fail one login at a time."""
