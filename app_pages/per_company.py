@@ -275,26 +275,26 @@ contacts = CT.latest_contacts(people.rows(), lead_id) if people is not None else
 has_list_contact = any(CT.same_number(c.get("contact_info"), list_phone) for c in contacts)
 
 
+FORM_FIELDS = ("name", "role", "contact_type", "contact_type_other", "contact_info", "note")
+
+
 @st.dialog("Contact person")
-def _contact_form(current: dict | None = None, prefill: dict | None = None) -> None:
-    """Add (current None) or edit one contact. Saving appends a version."""
-    c = current or prefill or {}
-    k = f"cf_{(current or {}).get('contact_id', 'new')}"
-    name = st.text_input("Name *", value=str(c.get("name", "")), key=f"{k}_name",
+def _contact_form(k: str, current: dict | None = None) -> None:
+    """Add (current None) or edit one contact. Saving appends a version. The
+    fields read their starting values from session state; see `_open_contact`."""
+    name = st.text_input("Name *", key=f"{k}_name",
                          placeholder="ถ้าลูกค้าไม่บอกชื่อ ให้พิมพ์ Unknown")
-    role = st.text_input("Role", value=str(c.get("role", "")), key=f"{k}_role",
+    role = st.text_input("Role", key=f"{k}_role",
                          placeholder="e.g. Owner, Accountant, Receptionist")
-    was_t = str(c.get("contact_type", ""))
-    ctype = st.selectbox("Contact type *", CT.TYPES, key=f"{k}_type",
-                         index=CT.TYPES.index(was_t) if was_t in CT.TYPES else 0,
+    ctype = st.selectbox("Contact type *", CT.TYPES, key=f"{k}_contact_type",
                          format_func=lambda t: CT.TYPE_LABELS[t])
     other = ""
     if ctype == "other":
-        other = st.text_input("Other type *", value=str(c.get("contact_type_other", "")),
-                              key=f"{k}_other", placeholder="e.g. WhatsApp, WeChat")
-    info = st.text_input("Contact info *", value=str(c.get("contact_info", "")),
-                         key=f"{k}_info", placeholder="Number, address or account name")
-    note = st.text_area("Note", value=str(c.get("note", "")), key=f"{k}_note", height=80,
+        other = st.text_input("Other type *", key=f"{k}_contact_type_other",
+                              placeholder="e.g. WhatsApp, WeChat")
+    info = st.text_input("Contact info *", key=f"{k}_contact_info",
+                         placeholder="Number, address or account name")
+    note = st.text_area("Note", key=f"{k}_note", height=80,
                         placeholder="เช่น ติดต่อได้หลังบ่าย 2 โมง, เป็นคนตัดสินใจเรื่องโทรคมนาคม")
 
     row = st.container(horizontal=True)
@@ -323,13 +323,21 @@ def _contact_form(current: dict | None = None, prefill: dict | None = None) -> N
         st.rerun()
 
 
-def _new_contact(prefill: dict | None = None) -> None:
-    """Open the add form empty, or with `prefill`. Both share the "new" widget
-    keys, so whatever an earlier, closed form left in them would otherwise win
-    over `prefill`: the list number came up blank after Add contact."""
-    for key in [x for x in st.session_state if str(x).startswith("cf_new_")]:
-        del st.session_state[key]
-    _contact_form(prefill=prefill)
+def _open_contact(current: dict | None = None, prefill: dict | None = None) -> None:
+    """Open the form for `current`, or a new contact started from `prefill`.
+
+    Every field is set in session state on each open, not passed as `value=`.
+    Add contact and Add as contact share one set of keys, and the browser keeps
+    showing a field's last value when only its default changes: the list number
+    stayed in Add contact, and a blank stayed in Add as contact. A value set
+    through session state is pushed to the browser."""
+    c = current or prefill or {}
+    k = f"cf_{(current or {}).get('contact_id', 'new')}"
+    for f in FORM_FIELDS:
+        st.session_state[f"{k}_{f}"] = str(c.get(f, "") or "")
+    if st.session_state[f"{k}_contact_type"] not in CT.TYPES:
+        st.session_state[f"{k}_contact_type"] = CT.TYPES[0]
+    _contact_form(k, current)
 
 
 st.space("small")
@@ -347,7 +355,7 @@ else:
                     st.caption(str(c["note"]))
             if st.button(":material/edit:", key=f"edit_{c['contact_id']}",
                          help="Edit or remove", disabled=read_only):
-                _contact_form(current=c)
+                _open_contact(current=c)
     if not contacts:
         st.caption("ยังไม่มีผู้ติดต่อ เพิ่มชื่อคนที่คุยด้วยไว้ "
                    "เพื่อให้การโทรครั้งถัดไปถึงคนที่ใช่")
@@ -355,12 +363,12 @@ else:
     actions = st.container(horizontal=True)
     if actions.button("Add contact", icon=":material/person_add:", key="add_contact",
                       disabled=read_only):
-        _new_contact()
+        _open_contact()
     if list_phone and not has_list_contact and actions.button(
             f"Add as contact: {list_phone}", icon=":material/call:",
             key="add_list_phone", disabled=read_only,
             help="Starts a contact with the phone number from our list filled in."):
-        _new_contact(prefill={"contact_type": "phone", "contact_info": list_phone})
+        _open_contact(prefill={"contact_type": "phone", "contact_info": list_phone})
 
 # --------------------------------------------------------------------------
 # attempts so far
