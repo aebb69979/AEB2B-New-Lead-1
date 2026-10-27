@@ -323,6 +323,15 @@ def _contact_form(current: dict | None = None, prefill: dict | None = None) -> N
         st.rerun()
 
 
+def _new_contact(prefill: dict | None = None) -> None:
+    """Open the add form empty, or with `prefill`. Both share the "new" widget
+    keys, so whatever an earlier, closed form left in them would otherwise win
+    over `prefill`: the list number came up blank after Add contact."""
+    for key in [x for x in st.session_state if str(x).startswith("cf_new_")]:
+        del st.session_state[key]
+    _contact_form(prefill=prefill)
+
+
 st.space("small")
 st.subheader(":material/contacts: Contact person")
 if people is None:
@@ -346,12 +355,12 @@ else:
     actions = st.container(horizontal=True)
     if actions.button("Add contact", icon=":material/person_add:", key="add_contact",
                       disabled=read_only):
-        _contact_form()
+        _new_contact()
     if list_phone and not has_list_contact and actions.button(
             f"Add as contact: {list_phone}", icon=":material/call:",
             key="add_list_phone", disabled=read_only,
             help="Starts a contact with the phone number from our list filled in."):
-        _contact_form(prefill={"contact_type": "phone", "contact_info": list_phone})
+        _new_contact(prefill={"contact_type": "phone", "contact_info": list_phone})
 
 # --------------------------------------------------------------------------
 # attempts so far
