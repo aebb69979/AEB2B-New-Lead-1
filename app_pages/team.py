@@ -98,6 +98,9 @@ lead["attempts"] = [prog[i]["attempts"] for i in ids]
 lead["started"] = lead["attempts"] > 0
 lead["floor_met"] = [prog[i]["floor_met"] for i in ids]
 lead["contacted"] = [prog[i]["connected"] for i in ids]
+# From the most recent call that recorded an answer, as on the AE's pages.
+lead["interest"] = [V.interest_of(prog[i]) for i in ids]
+lead["interested"] = lead["interest"] == "Interest"
 lead["last_outcome"] = [prog[i]["last_disposition"] for i in ids]
 lead["last_at"] = [prog[i]["last_logged_at"] for i in ids]
 for d, code in CODES.items():
@@ -106,6 +109,7 @@ for d, code in CODES.items():
 ae = (lead.groupby(["ae_id", "ae_name", "ae_region"], sort=False)
       .agg(leads=("lead_id", "size"), started=("started", "sum"),
            floor_met=("floor_met", "sum"), contacted=("contacted", "sum"),
+           interested=("interested", "sum"),
            dials=("attempts", "sum"), last_at=("last_at", "max"),
            **{c: (c, "sum") for c in CODES.values()})
       .reset_index())
@@ -149,6 +153,8 @@ m.metric("Leads", int(staffed["leads"].sum()))
 m.metric("Started", int(staffed["started"].sum()))
 m.metric(f"{cl.MIN_ATTEMPTS}-attempt floor met", int(staffed["floor_met"].sum()))
 m.metric("Contact made", int(staffed["contacted"].sum()))
+m.metric("Interested", int(staffed["interested"].sum()),
+         help="จำนวนบริษัทที่ตอบว่าสนใจ จากการโทรครั้งล่าสุดที่มีการบันทึกคำตอบ")
 m.metric("Dials logged", int(staffed["dials"].sum()))
 
 # --------------------------------------------------------------------------
@@ -174,7 +180,7 @@ if grouped:
 st.dataframe(
     shown[["ae_region", *(["sm"] if show_sm else []), "ae_name", "pace", "leads", "started",
            "floor_share",
-           "contacted", "dials", *CODES.values(), "last_call"]],
+           "contacted", "interested", "dials", *CODES.values(), "last_call"]],
     hide_index=True, width="stretch",
     column_config={
         "ae_region": st.column_config.TextColumn("Region", width="small"),
@@ -192,6 +198,10 @@ st.dataframe(
         "floor_share": st.column_config.ProgressColumn(
             "Floor met", format="percent", min_value=0.0, max_value=1.0, width="small"),
         "contacted": st.column_config.NumberColumn("Contacted", width="small"),
+        "interested": st.column_config.NumberColumn(
+            "Interested", width="small",
+            help="Companies, not dials: each counts once, from its most recent "
+                 "call that recorded an answer."),
         "dials": st.column_config.NumberColumn("Dials", width="small"),
         **outcome_cfg,
         "last_call": st.column_config.TextColumn("Last call", width="small"),
@@ -207,13 +217,15 @@ pick = st.selectbox("AE", ae["ae_id"].tolist(), key="team_ae",
 one = lead[lead["ae_id"] == pick].copy()
 one["last_call"] = [tf.human(x) if x else "" for x in one["last_at"]]
 FILTERS = {"All": None, "Not started": ("Not started",), "In progress": ("In progress",),
-           "Done": ("Floor met", "Contacted")}
+           "Done": ("Floor met", "Contacted"), "Interested": ()}
 f = st.segmented_control("Show", list(FILTERS), default="All", key="team_filter")
-if FILTERS.get(f or "All"):
+if f == "Interested":
+    one = one[one["interested"]]
+elif FILTERS.get(f or "All"):
     one = one[one["status"].isin(FILTERS[f])]
 st.dataframe(
-    one[["company_name", "registration_number", "district", "province", "status", "attempts",
-         "last_outcome", "last_call"]],
+    one[["company_name", "registration_number", "district", "province", "status", "interest",
+         "attempts", "last_outcome", "last_call"]],
     hide_index=True, width="stretch",
     column_config={
         "company_name": st.column_config.TextColumn("Company", width="large"),
@@ -221,6 +233,8 @@ st.dataframe(
         "district": st.column_config.TextColumn("District", width="small"),
         "province": st.column_config.TextColumn("Province", width="small"),
         "status": st.column_config.TextColumn("Status", width="small"),
+        "interest": st.column_config.TextColumn("Interest", width="small",
+                                                help="From the most recent call that recorded an answer."),
         "attempts": st.column_config.NumberColumn("Tries", width="small"),
         "last_outcome": st.column_config.TextColumn("Last outcome", width="medium"),
         "last_call": st.column_config.TextColumn("Last call", width="small"),

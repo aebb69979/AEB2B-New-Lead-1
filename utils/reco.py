@@ -35,6 +35,16 @@ def tsic(raw) -> str:
     return s.zfill(5) if s.isdigit() else ""
 
 
+UNKNOWN_INDUSTRY = "Unknown industry"
+
+
+def industry(raw, cat: dict) -> str:
+    """The TSIC division name, e.g. 'Wholesale trade', for the industry filter."""
+    code = tsic(raw)
+    return (cat.get("divisions", {}).get(code[:2], {}).get("name") if code else None) \
+        or UNKNOWN_INDUSTRY
+
+
 def capital(raw) -> float | None:
     try:
         v = float(str(raw).replace(",", ""))

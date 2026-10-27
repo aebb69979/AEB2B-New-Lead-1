@@ -47,15 +47,14 @@ mine, meta, state = ctx["mine"], ctx["meta"], ctx["state"]
 account = ctx["account"]
 log = boot.get_call_log()
 people = boot.get_contacts()
-n = len(mine)
 # An admin viewing as an AE must not write under the AE's territory.
 read_only = bool(st.session_state.get("viewing_as"))
+# The number each lead has in My leads, kept through the industry filter.
+mine = mine.assign(_no=range(1, len(mine) + 1))
 
 # --------------------------------------------------------------------------
 # which lead
 # --------------------------------------------------------------------------
-ids = [str(x) for x in mine["lead_id"]]
-
 # A lead_id handed over from Summary (row click), or `?lead=` on a fresh load.
 #
 # ONCE, THOUGH. The page writes the current lead back to `?lead=` at the bottom
@@ -68,6 +67,38 @@ wanted = st.session_state.pop("open_lead", None)
 if wanted is None and not st.session_state.get("_lead_deeplinked"):
     wanted = st.query_params.get("lead")
 st.session_state["_lead_deeplinked"] = True
+
+# Industry filter: narrows the picker and Prev / Next, never re-sorts. The list
+# order is the stored shuffle (leads.leads_for), and industry is flattened
+# within each arm, so working one industry at a time leaves no arm behind.
+_cat = boot.get_reco_catalogue()
+_ind = ([R.industry(c, _cat) for c in mine["tsic_code"]]
+        if _cat and "tsic_code" in mine.columns else [])
+
+
+def _refiltered() -> None:
+    # Stay on the current company if it is still in the list; else the first.
+    st.session_state["_keep_lead"] = st.query_params.get("lead")
+
+
+_count: dict[str, int] = {}
+for x in _ind:
+    _count[x] = _count.get(x, 0) + 1
+_picked = st.session_state.get("industry_filter") or ""
+_picked = _picked if _picked in _count else ""
+_all = [str(x) for x in mine["lead_id"]]
+# Opening a company the filter hides (a row click in My leads) clears it.
+if wanted in _all and _picked and _ind[_all.index(wanted)] != _picked:
+    _picked = ""
+st.session_state["industry_filter"] = _picked
+if _picked:
+    mine = mine[[x == _picked for x in _ind]].reset_index(drop=True)
+
+n = len(mine)
+ids = [str(x) for x in mine["lead_id"]]
+_keep = st.session_state.pop("_keep_lead", None)
+if _keep is not None and wanted is None:
+    st.session_state["lead_ix"] = ids.index(_keep) if _keep in ids else 0
 if wanted in ids:
     st.session_state["lead_ix"] = ids.index(wanted)
 ix = _position(st.session_state.get("lead_ix"), n)
@@ -80,12 +111,17 @@ st.session_state["lead_ix"] = ix
 # pushed to match it before it is drawn, and the selector reports its own
 # changes through a callback, which runs BEFORE the rerun that would overwrite
 # them. Clamping also covers the month selector changing how many leads exist.
-if st.session_state.get("lead_jump") != ix:
-    st.session_state["lead_jump"] = ix
+#
+# One selector per industry filter: the browser keeps the label it is showing
+# while the selected position stays the same, so after a filter change "1." went
+# on naming the first company of the previous list.
+JUMP = f"lead_jump:{_picked}"
+if st.session_state.get(JUMP) != ix:
+    st.session_state[JUMP] = ix
 
 
 def _jumped() -> None:
-    st.session_state["lead_ix"] = _position(st.session_state.get("lead_jump"), n)
+    st.session_state["lead_ix"] = _position(st.session_state.get(JUMP), n)
 
 
 prog = V.progress_for(mine)
@@ -106,19 +142,26 @@ def _label(i: int) -> str:
     tag = f" · {V.STATUS_DOT[s]} {s}" if s else ""
     w = V.interest_of(p)
     tag += f" · {V.INTEREST_EMOJI[w]} {w}" if w else ""
-    return f"{i + 1}. {mine.iloc[i]['company_name']} · {mark}{tag}"
+    return f"{mine.iloc[i]['_no']}. {mine.iloc[i]['company_name']} · {mark}{tag}"
 
 
 bar = st.container(horizontal=True, vertical_alignment="bottom")
 with bar:
+    if _count:
+        st.selectbox("Industry", ["", *sorted(_count, key=lambda x: (-_count[x], x))],
+                     key="industry_filter", on_change=_refiltered, width=260,
+                     format_func=lambda x: (f"{x} ({_count[x]})" if x
+                                            else f"All industries ({len(_ind)})"),
+                     help="From the company's TSIC code. Type to search.")
     if st.button(":material/chevron_left:", disabled=ix == 0, help="Previous lead"):
         st.session_state["lead_ix"] = ix - 1
         st.rerun()
     if st.button(":material/chevron_right:", disabled=ix >= n - 1, help="Next lead"):
         st.session_state["lead_ix"] = ix + 1
         st.rerun()
-    st.selectbox(f"Lead {ix + 1} of {n}", options=list(range(n)),
-                 format_func=_label, key="lead_jump", on_change=_jumped)
+    st.selectbox(f"Lead {ix + 1} of {n}" + (" (filtered)" if n < len(ctx["mine"]) else ""),
+                 options=list(range(n)),
+                 format_func=_label, key=JUMP, on_change=_jumped)
 
 lead = mine.iloc[ix]
 lead_id = str(lead["lead_id"])
