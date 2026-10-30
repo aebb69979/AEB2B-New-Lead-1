@@ -39,8 +39,12 @@ st.header("Team progress")
 
 regions = L.parse_regions(account.get("regions"))
 if is_admin and not is_manager(account):
-    regions = st.pills("Regions", REGIONS, selection_mode="multi", default=REGIONS,
-                       key="team_regions")
+    # Only the regions this source has AEs in: the industrial list is BMA-East's.
+    # A key per section, so one source's picks never meet the other's options.
+    _have = {r for v in df.get("ae_region", []) for r in L.parse_regions(v)}
+    _opts = [r for r in REGIONS if r in _have] or REGIONS
+    regions = st.pills("Regions", _opts, selection_mode="multi", default=_opts,
+                       key=f"team_regions_{V.section()}")
 regions = [r for r in REGIONS if r in regions]             # display order
 team = L.team_for(df, regions)
 
@@ -63,7 +67,7 @@ _seen = f"_viewed_{meta['id']}"
 # Not for an admin viewing as an SM: that view was the admin's, not the manager's.
 if (is_manager(account) and not st.session_state.get("viewing_as")
         and not st.session_state.get(_seen)):
-    views = boot.get_view_log()
+    views = boot.get_view_log(V.section())
     if views is not None:
         try:
             views.append(cl.new_view(account["email"], account.get("regions", ""),
@@ -75,7 +79,7 @@ if (is_manager(account) and not st.session_state.get("viewing_as")
 # --------------------------------------------------------------------------
 # per lead, then per AE
 # --------------------------------------------------------------------------
-log = boot.get_call_log()
+log = boot.get_call_log(V.section())
 rows = log.rows() if log is not None else []
 ids = [str(i) for i in team["lead_id"]]
 prog = cl.lead_progress(rows, ids)
@@ -91,8 +95,10 @@ def _status(p: dict) -> str:
     return "In progress" if p["attempts"] else "Not started"
 
 
+# The industrial list names its own industry; the monthly batches do not.
+_extra = ["industry"] if "industry" in team.columns else []
 lead = team[["lead_id", "ae_id", "ae_name", "ae_region", "company_name",
-             "registration_number", "district", "province"]].copy()
+             "registration_number", "district", "province", *_extra]].copy()
 lead["status"] = [_status(prog[i]) for i in ids]
 lead["attempts"] = [prog[i]["attempts"] for i in ids]
 lead["started"] = lead["attempts"] > 0
@@ -224,12 +230,13 @@ if f == "Interested":
 elif FILTERS.get(f or "All"):
     one = one[one["status"].isin(FILTERS[f])]
 st.dataframe(
-    one[["company_name", "registration_number", "district", "province", "status", "interest",
-         "attempts", "last_outcome", "last_call"]],
+    one[["company_name", "registration_number", *_extra, "district", "province", "status",
+         "interest", "attempts", "last_outcome", "last_call"]],
     hide_index=True, width="stretch",
     column_config={
         "company_name": st.column_config.TextColumn("Company", width="large"),
         "registration_number": st.column_config.TextColumn("Business ID", width="medium"),
+        "industry": st.column_config.TextColumn("Industry", width="medium"),
         "district": st.column_config.TextColumn("District", width="small"),
         "province": st.column_config.TextColumn("Province", width="small"),
         "status": st.column_config.TextColumn("Status", width="small"),

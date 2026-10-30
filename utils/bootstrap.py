@@ -369,6 +369,15 @@ def get_industrial_leads():
         return None, None
 
 
+def industrial_regions() -> set[str]:
+    """Regions with industrial leads; their sales managers get its team page."""
+    from . import leads as L
+    df, _ = get_industrial_leads()
+    if df is None or "ae_region" not in df.columns:
+        return set()
+    return {r for v in df["ae_region"] for r in L.parse_regions(v)}
+
+
 def industrial_ae_ids() -> set[str]:
     """Territories with industrial leads; the section is shown only to them."""
     df, _ = get_industrial_leads()
@@ -547,16 +556,16 @@ LOCAL_VIEW_LOG = LOCAL_DIR / ".local_view_log.json"
 
 
 @st.cache_resource(show_spinner=False)
-def get_view_log():
-    """Who opened the team page, and when. A tab in the CALL LOG spreadsheet --
-    it is analysis data like the calls, and the identity sheet holds password
-    hashes. None when cloud mode has no call log sheet."""
+def get_view_log(section: str = MAIN):
+    """Who opened the team page, and when. A tab in the section's CALL LOG
+    spreadsheet -- it is analysis data like the calls, and the identity sheet
+    holds password hashes. None when cloud mode has no call log sheet."""
     from .calllog import VIEW_COLUMNS, LocalCallLog, SheetsCallLog, ensure_header as _hdr
     if not has_cloud():
-        return LocalCallLog(LOCAL_VIEW_LOG)
-    if not call_log_sheet_id():
+        return LocalCallLog(_local(LOCAL_VIEW_LOG, section))
+    if not call_log_sheet_id(section):
         return None
-    sh = _gspread_client().open_by_key(call_log_sheet_id())
+    sh = _gspread_client().open_by_key(call_log_sheet_id(section))
     try:
         ws = sh.worksheet("manager_views")
     except Exception:                                      # noqa: BLE001

@@ -112,6 +112,13 @@ def recommend(lead, cat: dict) -> dict | None:
     if m is None:
         return None
     J = cat["journeys"]
+    # A lead list may name the journey outright where its TSIC division misleads:
+    # the industrial list's landlords are real estate (68), but they let factories
+    # and warehouses, not homes.
+    jo = str(lead.get("journey", "") or "").split(".")[0]
+    if jo in J and jo != m["journey"]:
+        m = {**m, "journey": jo, "why": f"{m['why']} · set by the lead list",
+             "secondary": [s for s in m["secondary"] if s != jo]}
     tier = tier_for(capital(lead.get("registered_capital")), cat)
     flags = flags_for(desc, cat)
 

@@ -250,9 +250,13 @@ is_manager = is_manager_record(account)
 admin_view = is_admin and not viewing_as
 
 
-def _team(default: bool = False):
+def _team(default: bool = False, url_path: str | None = None):
     return st.Page("app_pages/team.py", title="Team progress", icon=":material/groups:",
-                   default=default)
+                   default=default, url_path=url_path)
+
+
+# The BMA-East industrial list's own pages, under their own URLs.
+INDUSTRIAL_PATHS = ("industrial_leads", "industrial_company", "industrial_team")
 
 
 # The same two page files serve each lead source under its own URL; the
@@ -263,6 +267,9 @@ if is_manager and not admin_view:
     # A manager gets the team page and nothing else. The AE pages would only
     # say "no territory" -- a manager has no ae_id -- so offering them is noise.
     pages = {"Team": [_team(default=True)]}
+    # Its own team page for the regions the industrial list covers.
+    if set(L.parse_regions(account.get("regions"))) & boot.industrial_regions():
+        pages["BMA-East industrial"] = [_team(url_path="industrial_team")]
 else:
     # One section, not a heading per page: "Summary" and "Per-company" each
     # over a single item read as clutter, not structure.
@@ -281,20 +288,22 @@ else:
             st.Page("app_pages/my_leads.py", title="My leads", icon=":material/factory:",
                     url_path="industrial_leads"),
             _company[boot.INDUSTRIAL]]
+        if admin_view:
+            pages["BMA-East industrial"].append(_team(url_path="industrial_team"))
 if admin_view:
     pages["Team"] = [_team()]
     pages["Admin"] = [st.Page("app_pages/admin.py", title="Accounts",
                               icon=":material/admin_panel_settings:")]
 
 nav = st.navigation(pages)
-section = (boot.INDUSTRIAL if nav.url_path in ("industrial_leads", "industrial_company")
-           else boot.MAIN)
+section = boot.INDUSTRIAL if nav.url_path in INDUSTRIAL_PATHS else boot.MAIN
 if st.session_state.get("section", section) != section:
     # Position, filters and the ?lead= deep link belong to one source; carried
     # across they would land on the wrong company or on nothing at all.
     for key in [k for k in st.session_state
                 if k in ("lead_ix", "_lead_deeplinked", "industry_filter", "lead_filter",
-                         "company_filter", "_last_open", "open_lead")
+                         "company_filter", "_last_open", "open_lead", "team_ae",
+                         "team_filter")
                 or str(k).startswith("lead_jump")]:
         del st.session_state[key]
     st.query_params.pop("lead", None)

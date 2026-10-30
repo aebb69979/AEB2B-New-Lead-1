@@ -462,7 +462,7 @@ INDUSTRIAL_RENAME = {
     "ตรว.": "ind_wa", "ตรม.": "ind_sqm", "plots": "ind_plots",
 }
 INDUSTRIAL_LOADABLE = (list(INDUSTRIAL_RENAME)
-                       + ["lead_id", "registration_number", "industry", "tsic_division",
+                       + ["lead_id", "registration_number", "industry", "tsic_division", "journey",
                           "Company Status",
                           "ae_id", "ae_name", "ae_region", "display_order", CAN_SELL])
 
