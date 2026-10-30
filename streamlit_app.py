@@ -255,6 +255,10 @@ def _team(default: bool = False):
                    default=default)
 
 
+# The same two page files serve each lead source under its own URL; the
+# entry script tells them which source they are showing (view.section()).
+_company = {boot.MAIN: st.Page("app_pages/per_company.py", title="Company view",
+                               icon=":material/apartment:")}
 if is_manager and not admin_view:
     # A manager gets the team page and nothing else. The AE pages would only
     # say "no territory" -- a manager has no ae_id -- so offering them is noise.
@@ -265,13 +269,37 @@ else:
     pages = {
         "Leads": [st.Page("app_pages/my_leads.py", title="My leads",
                           icon=":material/format_list_bulleted:", default=True),
-                  st.Page("app_pages/per_company.py", title="Company view",
-                          icon=":material/apartment:")],
+                  _company[boot.MAIN]],
     }
+    # The BMA-East industrial list: only for territories that have leads in it
+    # (and administrators), so nobody else sees a menu of empty pages.
+    if admin_view or set(L.parse_ae_ids(account.get("ae_id"))) & boot.industrial_ae_ids():
+        _company[boot.INDUSTRIAL] = st.Page(
+            "app_pages/per_company.py", title="Company view", icon=":material/apartment:",
+            url_path="industrial_company")
+        pages["BMA-East industrial"] = [
+            st.Page("app_pages/my_leads.py", title="My leads", icon=":material/factory:",
+                    url_path="industrial_leads"),
+            _company[boot.INDUSTRIAL]]
 if admin_view:
     pages["Team"] = [_team()]
     pages["Admin"] = [st.Page("app_pages/admin.py", title="Accounts",
                               icon=":material/admin_panel_settings:")]
+
+nav = st.navigation(pages)
+section = (boot.INDUSTRIAL if nav.url_path in ("industrial_leads", "industrial_company")
+           else boot.MAIN)
+if st.session_state.get("section", section) != section:
+    # Position, filters and the ?lead= deep link belong to one source; carried
+    # across they would land on the wrong company or on nothing at all.
+    for key in [k for k in st.session_state
+                if k in ("lead_ix", "_lead_deeplinked", "industry_filter", "lead_filter",
+                         "company_filter", "_last_open", "open_lead")
+                or str(k).startswith("lead_jump")]:
+        del st.session_state[key]
+    st.query_params.pop("lead", None)
+st.session_state["section"] = section
+st.session_state["company_page"] = _company.get(section, _company[boot.MAIN])
 
 st.logo(str(brand.ASSETS / "true_logo.png"), size="medium")
 with st.sidebar:
@@ -294,7 +322,8 @@ with st.sidebar:
     # Newest first, and the newest is the default. Earlier months stay available
     # so a batch does not disappear from under an AE the moment the next one is
     # published -- unfinished work would go with it.
-    _months = boot.get_months()
+    # The industrial list is one file, not monthly batches.
+    _months = boot.get_months() if section == boot.MAIN else []
     if _months:
         _labels = boot.month_options(_months)
         _ids_m = [m["id"] for m in _months]
@@ -320,5 +349,4 @@ with st.sidebar:
         _sign_out()
         st.rerun()
 
-nav = st.navigation(pages)
 nav.run()

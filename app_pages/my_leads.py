@@ -9,7 +9,6 @@ instead of on the screen where the work happens.
 import pandas as pd
 import streamlit as st
 
-from utils import bootstrap as boot
 from utils import calllog as cl
 from utils import leads as L
 from utils import view as V
@@ -61,7 +60,7 @@ def _status(p: dict) -> str:
 
 view = mine[L.DISPLAY].copy()
 # New / Existing from the batch's final file; no file, no column and no filter.
-company_status = boot.get_company_status(meta.get("name", ""))
+company_status = V.company_status(meta)
 if company_status:
     view.insert(1, "company_status",
                 [[company_status[i]] if i in company_status else []
@@ -157,7 +156,7 @@ if rows:
     if st.session_state.get("_last_open") != chosen:
         st.session_state["_last_open"] = chosen
         st.session_state["open_lead"] = chosen
-        st.switch_page("app_pages/per_company.py")
+        st.switch_page(st.session_state.get("company_page") or "app_pages/per_company.py")
 else:
     st.session_state.pop("_last_open", None)
 

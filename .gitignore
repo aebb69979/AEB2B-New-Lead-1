@@ -26,6 +26,8 @@ m*_run/
 .local_call_log.json
 .local_view_log.json
 .local_contacts.json
+.local_call_log_industrial.json
+.local_contacts_industrial.json
 
 # Editor / build noise
 __pycache__/

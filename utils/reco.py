@@ -5,7 +5,9 @@ The catalogue (`reco_catalogue.json`) is built outside the app by
 same Drive folder as the lead files -- never from this repo, which is public
 while the cards carry internal prices. This module only applies its rules:
 
-    TSIC code         -> journey (4-digit class override, else 2-digit division)
+    TSIC code         -> journey (4-digit class override, else 2-digit division;
+                         a lead with only a `tsic_division`, like the industrial
+                         list, goes by the division)
     description       -> secondary journeys and flags (Online seller, Fleet, ...)
     registered capital-> size tier, which picks the package within a family
                          (Internet, Mobile plan)
@@ -36,6 +38,12 @@ def tsic(raw) -> str:
 
 
 UNKNOWN_INDUSTRY = "Unknown industry"
+
+
+def division(raw) -> str:
+    """'20' / '20.0' / 20 -> '20'; anything unusable -> ''."""
+    s = str(raw if raw is not None else "").strip().split(".")[0]
+    return s.zfill(2) if s.isdigit() and len(s) <= 2 else ""
 
 
 def industry(raw, cat: dict) -> str:
@@ -72,7 +80,9 @@ def journey_for(code: str, desc: str, cat: dict) -> dict | None:
     if rule is None:
         return None
     j, conf = str(rule["journey"]), rule["confidence"]
-    why = f"TSIC {code} · {rule['name']}" if rule["name"] else f"TSIC {code}"
+    # A bare division is not a real TSIC code, so it is not shown as one.
+    head = f"TSIC {code}" if len(code) == 5 else "Industry"
+    why = f"{head} · {rule['name']}" if rule["name"] else head
     hits = []
     for k in cat["journey_keywords"]:
         jj = str(k["journey"])
@@ -95,7 +105,7 @@ def recommend(lead, cat: dict) -> dict | None:
     usable TSIC code or the catalogue is missing."""
     if not cat:
         return None
-    code = tsic(lead.get("tsic_code"))
+    code = tsic(lead.get("tsic_code")) or division(lead.get("tsic_division"))
     desc = str(lead.get("business_description", "") or "")
     desc = "" if desc == "nan" else desc
     m = journey_for(code, desc, cat)

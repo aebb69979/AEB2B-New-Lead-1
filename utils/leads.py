@@ -416,3 +416,88 @@ def snapshot_label(meta: dict | None, n_rows: int) -> str:
     if not meta:
         return f"{n_rows:,} leads · local file"
     return f"{meta.get('name', '?')} · {n_rows:,} leads · uploaded {meta.get('modifiedTime', '')[:10]}"
+
+
+# --------------------------------------------------------------------------
+# the BMA-East industrial list (tools/build_bma_east_final.py)
+# --------------------------------------------------------------------------
+# A separate lead source with its own call log: the Bang Poo factory list the
+# BMA-East AEs handed over, one row per company, columns as printed in the PDF.
+# It is read through its own allowlist -- the CCP+ owner columns in the source
+# file name Enterprise AEs and their phone numbers, and are never parsed -- and
+# renamed onto the snapshot's column names so My leads and Company view work on
+# it unchanged. What has no snapshot equivalent keeps an `ind_` name and is shown
+# in the Company view's Factory box.
+# Published as `bma_east_leads_<date>_final.csv` (the date optional); the newest
+# date wins, so a corrected list is an upload, like a monthly batch. Progress is
+# keyed on lead_id (BE-0001 ...), which a rebuild keeps.
+INDUSTRIAL_RE = re.compile(r"^bma_east_leads(?:_(\d{4}-\d{2}-\d{2}))?_final\.csv$")
+
+
+def industrial_sort_key(name: str) -> tuple[str] | None:
+    """('2026-10-30',) for a dated industrial file, ('',) undated, None otherwise."""
+    m = INDUSTRIAL_RE.match(name or "")
+    return (m.group(1) or "",) if m else None
+
+
+def find_industrial(service_account_info: dict, folder_id: str) -> dict | None:
+    """The newest industrial lead file in the folder, or None."""
+    sess = _session(service_account_info)
+    r = sess.get(DRIVE_FILES, params={
+        "q": f"'{folder_id}' in parents and trashed = false",
+        "fields": "files(id,name,modifiedTime)", "pageSize": 200,
+        "supportsAllDrives": True, "includeItemsFromAllDrives": True})
+    r.raise_for_status()
+    files = [f for f in r.json().get("files", []) if industrial_sort_key(f["name"])]
+    return max(files, key=lambda f: (industrial_sort_key(f["name"]), f["modifiedTime"]),
+               default=None)
+INDUSTRIAL_RENAME = {
+    "ชื่อบริษัท (TH)": "company_name", "ชื่อบริษัท (EN)": "name_en",
+    "ประกอบอุตสาหกรรม": "business_description",
+    "ที่อยู่สำนักงาน": "address", "โทรศัพท์ (สำนักงาน)": "phone", "E-mail (สำนักงาน)": "email",
+    "FAX (สำนักงาน)": "ind_fax",
+    "ที่อยู่โรงงาน": "ind_factory_address", "โทรศัพท์ (โรงงาน)": "ind_factory_phone",
+    "FAX (โรงงาน)": "ind_factory_fax", "E-mail (โรงงาน)": "ind_factory_email",
+    "เขต": "ind_zone", "ที่ดินแปลงที่": "ind_plot", "ไร่": "ind_rai", "งาน": "ind_ngan",
+    "ตรว.": "ind_wa", "ตรม.": "ind_sqm", "plots": "ind_plots",
+}
+INDUSTRIAL_LOADABLE = (list(INDUSTRIAL_RENAME)
+                       + ["lead_id", "registration_number", "industry", "tsic_division",
+                          "Company Status",
+                          "ae_id", "ae_name", "ae_region", "display_order", CAN_SELL])
+
+
+def _place(address: str, word: str) -> str:
+    """'... อำเภอ/เขต บางพลี จังหวัด สมุทรปราการ ...' -> 'บางพลี' for 'อำเภอ/เขต'."""
+    m = re.search(re.escape(word) + r"\s*([^\s|]+)", address or "")
+    v = m.group(1) if m else ""
+    return "" if v in ("-", "รหัสไปรษณีย์") else v
+
+
+def read_industrial_bytes(raw: bytes) -> pd.DataFrame:
+    """The industrial file, sellable rows only, on the snapshot's column names.
+
+    Phone and e-mail are the office's, falling back to the factory's, so the
+    lead list and the Add as contact button have a number whenever the PDF had
+    one. District and province come from the FACTORY address: that is the site
+    in Bang Poo, while the office is often in Bangkok.
+    """
+    df = pd.read_csv(io.BytesIO(raw), dtype=str, keep_default_na=False,
+                     encoding="utf-8-sig", usecols=lambda c: c in INDUSTRIAL_LOADABLE)
+    df = sellable(df).rename(columns=INDUSTRIAL_RENAME)
+    for c in ("phone", "email"):
+        fac = df.get(f"ind_factory_{c}", "")
+        df[c] = df[c].where(df[c].str.strip() != "", fac)
+    where = df["ind_factory_address"].where(df["ind_factory_address"].str.strip() != "",
+                                            df["address"])
+    df["district"] = where.map(lambda a: _place(a, "อำเภอ/เขต"))
+    df["province"] = where.map(lambda a: _place(a, "จังหวัด"))
+    return _check(df)
+
+
+def industrial_status(df: pd.DataFrame) -> dict[str, str]:
+    """lead_id -> 'New' / 'Existing'. The industrial file carries its own."""
+    if "Company Status" not in df.columns:
+        return {}
+    return {str(i): s for i, s in zip(df["lead_id"], df["Company Status"])
+            if s in COMPANY_STATUSES}

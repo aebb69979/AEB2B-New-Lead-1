@@ -321,6 +321,60 @@ def get_company_status(snapshot_name: str) -> dict[str, str]:
         return {}
 
 
+# --------------------------------------------------------------------------
+# the BMA-East industrial list
+# --------------------------------------------------------------------------
+# Local mode: where tools/build_bma_east_final.py writes, from either launch
+# directory. Cloud: the file of that name in the `industrial_folder_id` folder
+# (BMA_East_leads_industrial on Drive).
+LOCAL_INDUSTRIAL_DIRS = [
+    Path("../BMA_East Lead Dataset/BMA_East_leads_industrial"),
+    Path("../../BMA_East Lead Dataset/BMA_East_leads_industrial"),
+    Path(__file__).resolve().parent.parent.parent.parent / "BMA_East Lead Dataset"
+    / "BMA_East_leads_industrial",
+]
+INDUSTRIAL_LABEL = "BMA-East industrial · Bang Poo"
+
+
+@st.cache_data(ttl=300, show_spinner="Loading leads…")
+def get_industrial_leads():
+    """(frame, metadata) for the industrial list, or (None, None) when it is
+    not published. Short TTL: it is re-uploaded in place, not versioned by name.
+    Unreadable means no section, never a broken app."""
+    from . import leads as L
+    try:
+        if not has_cloud():
+            found = [f for d in LOCAL_INDUSTRIAL_DIRS if d.is_dir()
+                     for f in d.iterdir() if L.industrial_sort_key(f.name)]
+            if not found:
+                return None, None
+            f = max(found, key=lambda f: (L.industrial_sort_key(f.name), f.stat().st_mtime))
+            meta = {"id": str(f), "name": f.name, "label": INDUSTRIAL_LABEL,
+                    "generated": "", "modifiedTime": ""}
+            raw = f.read_bytes()
+        else:
+            folder = str(secret("industrial_folder_id", "") or "")
+            if not folder:
+                return None, None
+            sa = dict(secret("gcp_service_account"))
+            f = L.find_industrial(sa, folder)
+            if not f:
+                return None, None
+            meta = {**f, "label": INDUSTRIAL_LABEL, "generated": ""}
+            raw = L.download(sa, f["id"])
+        df = L.read_industrial_bytes(raw)
+        return df, {**meta, "company_status": L.industrial_status(df)}
+    except Exception:                                      # noqa: BLE001
+        _logging.getLogger(__name__).warning("industrial leads unavailable", exc_info=True)
+        return None, None
+
+
+def industrial_ae_ids() -> set[str]:
+    """Territories with industrial leads; the section is shown only to them."""
+    df, _ = get_industrial_leads()
+    return set() if df is None else set(df["ae_id"].astype(str)) - {""}
+
+
 RECO_CATALOGUE = "reco_catalogue.json"
 
 
@@ -369,6 +423,12 @@ def setup_problems() -> list[str]:
                        "cannot log calls. Create a separate spreadsheet (not the "
                        "identity one, which holds password hashes), share it with "
                        "the service account as Editor, and add its id.")
+        if secret("industrial_folder_id") and not call_log_sheet_id(INDUSTRIAL):
+            out.append("`industrial_folder_id` is set but `industrial_call_log_sheet_id` "
+                       "is not — BMA-East AEs can see the industrial leads but cannot "
+                       "log calls on them. Create its own spreadsheet (e.g. "
+                       "ae_call_log_BMA_East_industrial), share it with the service "
+                       "account as Editor, and add its id.")
     if not admin_emails():
         out.append("`admin_emails` is empty — nobody can approve accounts.")
     return out
@@ -380,30 +440,43 @@ def setup_problems() -> list[str]:
 LOCAL_CALL_LOG = LOCAL_DIR / ".local_call_log.json"
 
 
-def call_log_sheet_id() -> str:
+# Lead sources. Each has its own leads and its OWN call-log spreadsheet, so the
+# m1 experiment's log stays exactly what its analysis expects.
+MAIN = "main"
+INDUSTRIAL = "industrial"
+
+
+def call_log_sheet_id(section: str = MAIN) -> str:
     """Deliberately NOT defaulted to `identity_sheet_id`.
 
     The identity sheet holds password hashes. The call log is analysis data and
     will be shared with whoever runs the analysis. Falling back to one sheet
     would quietly hand out the hashes with it, so an unset id disables logging
-    instead -- loud and safe rather than silent and wrong.
+    instead -- loud and safe rather than silent and wrong. For the same reason
+    the industrial section never falls back to the main call log.
     """
-    return str(secret("call_log_sheet_id", "") or "")
+    name = "industrial_call_log_sheet_id" if section == INDUSTRIAL else "call_log_sheet_id"
+    return str(secret(name, "") or "")
 
 
 def call_log_available() -> bool:
     return (not has_cloud()) or bool(call_log_sheet_id())
 
 
+def _local(path: Path, section: str) -> Path:
+    """`.local_call_log.json` -> `.local_call_log_industrial.json` for the other source."""
+    return path if section == MAIN else path.with_name(f"{path.stem}_{section}{path.suffix}")
+
+
 @st.cache_resource(show_spinner=False)
-def get_call_log():
+def get_call_log(section: str = MAIN):
     """Append-only attempt log. None when cloud mode has no sheet configured."""
     from .calllog import LOG_COLUMNS, LocalCallLog, SheetsCallLog, ensure_header as _hdr
     if not has_cloud():
-        return LocalCallLog(LOCAL_CALL_LOG)
-    if not call_log_sheet_id():
+        return LocalCallLog(_local(LOCAL_CALL_LOG, section))
+    if not call_log_sheet_id(section):
         return None
-    sh = _gspread_client().open_by_key(call_log_sheet_id())
+    sh = _gspread_client().open_by_key(call_log_sheet_id(section))
     try:
         ws = sh.worksheet("call_log")
     except Exception:                                      # noqa: BLE001
@@ -499,17 +572,17 @@ LOCAL_CONTACTS = LOCAL_DIR / ".local_contacts.json"
 
 
 @st.cache_resource(show_spinner=False)
-def get_contacts():
-    """Contact people per lead (utils.contacts). A `contacts` tab in the CALL LOG
-    spreadsheet, created here on first use. None when cloud mode has no call
-    log sheet."""
+def get_contacts(section: str = MAIN):
+    """Contact people per lead (utils.contacts). A `contacts` tab in the
+    section's CALL LOG spreadsheet, created here on first use. None when cloud
+    mode has no call log sheet for the section."""
     from .calllog import LocalCallLog, SheetsCallLog, ensure_header as _hdr
     from .contacts import CONTACT_COLUMNS
     if not has_cloud():
-        return LocalCallLog(LOCAL_CONTACTS)
-    if not call_log_sheet_id():
+        return LocalCallLog(_local(LOCAL_CONTACTS, section))
+    if not call_log_sheet_id(section):
         return None
-    sh = _gspread_client().open_by_key(call_log_sheet_id())
+    sh = _gspread_client().open_by_key(call_log_sheet_id(section))
     try:
         ws = sh.worksheet("contacts")
     except Exception:                                      # noqa: BLE001

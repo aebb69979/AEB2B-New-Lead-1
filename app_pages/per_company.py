@@ -45,8 +45,8 @@ def _position(raw, count: int) -> int:
 ctx = V.current()
 mine, meta, state = ctx["mine"], ctx["meta"], ctx["state"]
 account = ctx["account"]
-log = boot.get_call_log()
-people = boot.get_contacts()
+log = boot.get_call_log(V.section())
+people = boot.get_contacts(V.section())
 # An admin viewing as an AE must not write under the AE's territory.
 read_only = bool(st.session_state.get("viewing_as"))
 # The number each lead has in My leads, kept through the industry filter.
@@ -70,10 +70,14 @@ st.session_state["_lead_deeplinked"] = True
 
 # Industry filter: narrows the picker and Prev / Next, never re-sorts. The list
 # order is the stored shuffle (leads.leads_for), and industry is flattened
-# within each arm, so working one industry at a time leaves no arm behind.
+# within each arm, so working one industry at a time leaves no arm behind. The
+# industrial list names its own industry (tools/build_bma_east_final.py).
 _cat = boot.get_reco_catalogue()
-_ind = ([R.industry(c, _cat) for c in mine["tsic_code"]]
-        if _cat and "tsic_code" in mine.columns else [])
+if "industry" in mine.columns:
+    _ind = [str(x) for x in mine["industry"]]
+else:
+    _ind = ([R.industry(c, _cat) for c in mine["tsic_code"]]
+            if _cat and "tsic_code" in mine.columns else [])
 
 
 def _refiltered() -> None:
@@ -125,7 +129,7 @@ def _jumped() -> None:
 
 
 prog = V.progress_for(mine)
-company_status = boot.get_company_status(meta.get("name", ""))
+company_status = V.company_status(meta)
 
 
 def _label(i: int) -> str:
@@ -152,7 +156,9 @@ with bar:
                      key="industry_filter", on_change=_refiltered, width=260,
                      format_func=lambda x: (f"{x} ({_count[x]})" if x
                                             else f"All industries ({len(_ind)})"),
-                     help="From the company's TSIC code. Type to search.")
+                     help=("From what the company makes, as listed by the estate. "
+                           if "industry" in mine.columns
+                           else "From the company's TSIC code. ") + "Type to search.")
     if st.button(":material/chevron_left:", disabled=ix == 0, help="Previous lead"):
         st.session_state["lead_ix"] = ix - 1
         st.rerun()
@@ -236,10 +242,30 @@ with right:
         st.markdown("**:material/apartment: Company**")
         for k, v in _rows([("Business ID", lead.get("registration_number")),
                            ("Registered capital", _money(lead.get("registered_capital"))),
-                           ("Address", lead.get("address")),
+                           ("Office address" if "ind_factory_address" in lead else "Address",
+                            lead.get("address")),
                            ("Sub-district", lead.get("sub_district")),
                            ("District", lead.get("district")),
                            ("Province", lead.get("province"))]):
+            st.markdown(f":gray[{k}] · {v}")
+
+# The industrial list's own columns: the plant in Bang Poo and its land.
+if "ind_factory_address" in lead:
+    single = str(lead.get("ind_plots", "1")) == "1"
+    area = (f"{lead.get('ind_rai')} ไร่ {lead.get('ind_ngan')} งาน {lead.get('ind_wa')} ตร.ว. "
+            f"· {lead.get('ind_sqm')} ตร.ม." if single
+            else f"{lead.get('ind_sqm')} ตร.ม. (each plot)")
+    with st.container(border=True):
+        st.markdown("**:material/factory: Factory**")
+        for k, v in _rows([("Address", lead.get("ind_factory_address")),
+                           ("Phone", lead.get("ind_factory_phone")),
+                           ("Fax", lead.get("ind_factory_fax")),
+                           ("Email", lead.get("ind_factory_email")),
+                           ("Office fax", lead.get("ind_fax")),
+                           ("Zone", lead.get("ind_zone")),
+                           ("Land plot" if single else f"Land plots ({lead.get('ind_plots')})",
+                            lead.get("ind_plot")),
+                           ("Area", area if str(lead.get("ind_sqm", "")).strip() else "")]):
             st.markdown(f":gray[{k}] · {v}")
 
 desc = str(lead.get("business_description", "")).strip()

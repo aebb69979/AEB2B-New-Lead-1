@@ -18,12 +18,25 @@ NO_SNAPSHOT = ("No lead snapshot is published yet. The control panel's Publish "
                "the service account.")
 
 
+def section() -> str:
+    """Which lead source the open page shows: boot.MAIN (the monthly batches) or
+    boot.INDUSTRIAL. Set by the entry script from the page being run -- the same
+    page files serve both, under different URLs."""
+    return st.session_state.get("section") or boot.MAIN
+
+
 def batch() -> tuple:
     """(whole snapshot, metadata) for the selected month, or stop the page.
 
     Unfiltered -- callers narrow it with `leads_for` or `team_for`, the only two
     functions allowed to select rows for a person.
     """
+    if section() == boot.INDUSTRIAL:
+        df, meta = boot.get_industrial_leads()
+        if df is None:
+            st.info("The BMA-East industrial list is not published.", icon=":material/inbox:")
+            st.stop()
+        return df, meta
     months = boot.get_months()
     if not months:
         st.info(NO_SNAPSHOT, icon=":material/inbox:")
@@ -118,10 +131,18 @@ STATUS_HELP = {"New": "No Enterprise AE owns this company in CCP+.",
                "Existing": "An Enterprise AE already owns this company in CCP+."}
 
 
+def company_status(meta: dict) -> dict[str, str]:
+    """lead_id -> 'New' / 'Existing' for the open source; {} hides the column.
+    A monthly batch reads its `_final.csv`; the industrial file carries its own."""
+    if "company_status" in meta:
+        return meta["company_status"]
+    return boot.get_company_status(meta.get("name", ""))
+
+
 def progress_for(mine) -> dict:
     """Attempt progress for these leads, or empty when logging is unconfigured."""
     from . import calllog as cl
-    log = boot.get_call_log()
+    log = boot.get_call_log(section())
     ids = [str(x) for x in mine["lead_id"]]
     if log is None:
         return {i: {"attempts": 0, "connected": False, "floor_met": False,
