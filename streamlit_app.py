@@ -257,6 +257,7 @@ def _team(default: bool = False, url_path: str | None = None):
 
 # The BMA-East industrial list's own pages, under their own URLs.
 INDUSTRIAL_PATHS = ("industrial_leads", "industrial_company", "industrial_team")
+DBD = "DBD leads"
 
 
 # The same two page files serve each lead source under its own URL; the
@@ -266,7 +267,7 @@ _company = {boot.MAIN: st.Page("app_pages/per_company.py", title="Company view",
 if is_manager and not admin_view:
     # A manager gets the team page and nothing else. The AE pages would only
     # say "no territory" -- a manager has no ae_id -- so offering them is noise.
-    pages = {"Team": [_team(default=True)]}
+    pages = {DBD: [_team(default=True)]}
     # Its own team page for the regions the industrial list covers.
     if set(L.parse_regions(account.get("regions"))) & boot.industrial_regions():
         pages["BMA-East industrial"] = [_team(url_path="industrial_team")]
@@ -274,10 +275,12 @@ else:
     # One section, not a heading per page: "Summary" and "Per-company" each
     # over a single item read as clutter, not structure.
     pages = {
-        "Leads": [st.Page("app_pages/my_leads.py", title="My leads",
-                          icon=":material/format_list_bulleted:", default=True),
-                  _company[boot.MAIN]],
+        DBD: [st.Page("app_pages/my_leads.py", title="My leads",
+                      icon=":material/format_list_bulleted:", default=True),
+              _company[boot.MAIN]],
     }
+    if admin_view:
+        pages[DBD].append(_team())
     # The BMA-East industrial list: only for territories that have leads in it
     # (and administrators), so nobody else sees a menu of empty pages.
     if admin_view or set(L.parse_ae_ids(account.get("ae_id"))) & boot.industrial_ae_ids():
@@ -291,7 +294,6 @@ else:
         if admin_view:
             pages["BMA-East industrial"].append(_team(url_path="industrial_team"))
 if admin_view:
-    pages["Team"] = [_team()]
     pages["Admin"] = [st.Page("app_pages/admin.py", title="Accounts",
                               icon=":material/admin_panel_settings:")]
 
