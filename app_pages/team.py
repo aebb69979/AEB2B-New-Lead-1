@@ -121,6 +121,19 @@ ae = (lead.groupby(["ae_id", "ae_name", "ae_region"], sort=False)
       .reset_index())
 ae["vacant"] = ae["ae_name"].str.contains("vacant", case=False)
 ae["floor_share"] = ae["floor_met"] / ae["leads"]
+
+
+def _rate(num, den):
+    """num / den, or None (shown as a blank cell) when there is nothing to divide by."""
+    return num / den if den else None
+
+
+# Rates over leads ATTEMPTED, not all leads, so an AE early in the batch is not
+# marked down for leads they have not reached yet. Pitch success is over leads
+# CONTACTED: of the businesses reached, how many said they were interested.
+ae["contact_rate"] = [_rate(c, s) for c, s in zip(ae["contacted"], ae["started"])]
+ae["interest_rate"] = [_rate(i, s) for i, s in zip(ae["interested"], ae["started"])]
+ae["pitch_success"] = [_rate(i, c) for i, c in zip(ae["interested"], ae["contacted"])]
 ae["last_call"] = [tf.human(x) if x else "" for x in ae["last_at"]]
 
 
@@ -163,6 +176,22 @@ m.metric("Interested", int(staffed["interested"].sum()),
          help="จำนวนบริษัทที่ตอบว่าสนใจ จากการโทรครั้งล่าสุดที่มีการบันทึกคำตอบ")
 m.metric("Dials logged", int(staffed["dials"].sum()))
 
+RATE_HELP = {
+    "contact_rate": "จำนวนบริษัทที่ติดต่อได้ ÷ จำนวนบริษัทที่เริ่มโทรแล้ว "
+                    "(จากบริษัทที่โทรไปแล้ว ติดต่อได้กี่เปอร์เซ็นต์)",
+    "interest_rate": "จำนวนบริษัทที่สนใจ ÷ จำนวนบริษัทที่เริ่มโทรแล้ว "
+                     "(จากบริษัทที่โทรไปแล้ว สนใจกี่เปอร์เซ็นต์)",
+    "pitch_success": "จำนวนบริษัทที่สนใจ ÷ จำนวนบริษัทที่ติดต่อได้ "
+                     "(จากบริษัทที่ได้คุยด้วยแล้ว สนใจกี่เปอร์เซ็นต์)",
+}
+_s, _c, _i = (int(staffed[k].sum()) for k in ("started", "contacted", "interested"))
+r = st.container(horizontal=True)
+for label, key, num, den in (("Contact rate", "contact_rate", _c, _s),
+                             ("Interest rate", "interest_rate", _i, _s),
+                             ("Pitch success", "pitch_success", _i, _c)):
+    v = _rate(num, den)
+    r.metric(label, "—" if v is None else f"{v:.0%}", help=RATE_HELP[key], border=True)
+
 # --------------------------------------------------------------------------
 # by AE
 # --------------------------------------------------------------------------
@@ -186,7 +215,8 @@ if grouped:
 st.dataframe(
     shown[["ae_region", *(["sm"] if show_sm else []), "ae_name", "pace", "leads", "started",
            "floor_share",
-           "contacted", "interested", "dials", *CODES.values(), "last_call"]],
+           "contacted", "interested", "contact_rate", "interest_rate", "pitch_success",
+           "dials", *CODES.values(), "last_call"]],
     hide_index=True, width="stretch",
     column_config={
         "ae_region": st.column_config.TextColumn("Region", width="small"),
@@ -208,6 +238,10 @@ st.dataframe(
             "Interested", width="small",
             help="Companies, not dials: each counts once, from its most recent "
                  "call that recorded an answer."),
+        **{k: st.column_config.NumberColumn(lbl, format="percent", width="small",
+                                            help=RATE_HELP[k])
+           for k, lbl in (("contact_rate", "Contact rate"), ("interest_rate", "Interest rate"),
+                          ("pitch_success", "Pitch success"))},
         "dials": st.column_config.NumberColumn("Dials", width="small"),
         **outcome_cfg,
         "last_call": st.column_config.TextColumn("Last call", width="small"),
