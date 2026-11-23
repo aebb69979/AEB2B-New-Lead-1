@@ -5,6 +5,7 @@ below is computed from that source's log alone. Vacant territories are left
 out: nobody is calling them, and counting their leads would drag every rate.
 The DBD column is the newest monthly batch, as on its Team progress page.
 """
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -141,9 +142,23 @@ st.caption("Started = บริษัทที่โทรแล้วอย่�
 # what the dials ended in
 # --------------------------------------------------------------------------
 st.subheader("How dials ended")
-mix = pd.DataFrame(mixes)
-mix.index = [c.replace("_", " ").capitalize() for c in mix.index]
-st.bar_chart(mix, horizontal=True, stack=False, x_label="Share of dials",
-             y_label="", height=420)
+st.caption("สัดส่วนของการโทรแต่ละครั้ง (ไม่ใช่จำนวนบริษัท) แยกตามผลการโทร คิดจากจำนวนการโทรทั้งหมดของแต่ละแหล่งลีด "
+           "ดังนั้นแท่งทั้งหมดของแต่ละแหล่งรวมกันได้ 100% (นับทุกช่องทางการติดต่อ "
+           "ไม่เฉพาะโทรศัพท์ และไม่รวมพื้นที่ที่ยังว่างอยู่)")
+mix = (pd.DataFrame(mixes).rename_axis("Outcome").reset_index()
+       .melt(id_vars="Outcome", var_name="Source", value_name="Share"))
+mix["Outcome"] = mix["Outcome"].str.replace("_", " ").str.capitalize()
+# Fixed at 0 and not zoomable or pannable: a share cannot be negative, and a
+# dragged axis would show a region that cannot hold data.
+chart = (alt.Chart(mix).mark_bar()
+         .encode(y=alt.Y("Outcome:N", title=None, sort=list(dict.fromkeys(mix["Outcome"]))),
+                 x=alt.X("Share:Q", title="Share of dials", axis=alt.Axis(format="%"),
+                         scale=alt.Scale(domain=[0, max(float(mix["Share"].max()), 0.05) * 1.1],
+                                         nice=True, clamp=True)),
+                 yOffset="Source:N",
+                 color=alt.Color("Source:N", title=None),
+                 tooltip=["Source", "Outcome", alt.Tooltip("Share:Q", format=".1%")])
+         .properties(height=420))
+st.altair_chart(chart, width="stretch")
 st.caption(f":material/visibility: Read-only · DBD column: "
            f"{next((l for n, _, _, l in _sources() if n == 'DBD leads'), '') or 'n/a'}")
