@@ -384,6 +384,66 @@ def industrial_ae_ids() -> set[str]:
     return set() if df is None else set(df["ae_id"].astype(str)) - {""}
 
 
+# --------------------------------------------------------------------------
+# the SME B2B list
+# --------------------------------------------------------------------------
+# Local mode: where tools/build_sme_final.py writes. Cloud: the newest
+# sme_b2b_leads_<date>_final.csv in the `sme_folder_id` folder.
+LOCAL_SME_DIRS = [
+    Path("../SME B2B Lead"),
+    Path("../../SME B2B Lead"),
+    Path(__file__).resolve().parent.parent.parent.parent / "SME B2B Lead",
+]
+SME_LABEL = "SME B2B customers"
+
+
+@st.cache_data(ttl=300, show_spinner="Loading leads…")
+def get_sme_leads():
+    """(frame, metadata) for the SME list, or (None, None) when it is not
+    published. Unreadable means no section, never a broken app."""
+    from . import leads as L
+    try:
+        if not has_cloud():
+            found = [f for d in LOCAL_SME_DIRS if d.is_dir()
+                     for f in d.iterdir() if L.sme_sort_key(f.name)]
+            if not found:
+                return None, None
+            f = max(found, key=lambda f: (L.sme_sort_key(f.name), f.stat().st_mtime))
+            meta = {"id": str(f), "name": f.name, "label": SME_LABEL,
+                    "generated": "", "modifiedTime": ""}
+            raw = f.read_bytes()
+        else:
+            folder = str(secret("sme_folder_id", "") or "")
+            if not folder:
+                return None, None
+            sa = dict(secret("gcp_service_account"))
+            f = L.find_sme(sa, folder)
+            if not f:
+                return None, None
+            meta = {**f, "label": SME_LABEL, "generated": ""}
+            raw = L.download(sa, f["id"])
+        # No New / Existing: every row is already a True customer.
+        return L.read_sme_bytes(raw), {**meta, "company_status": {}}
+    except Exception:                                      # noqa: BLE001
+        _logging.getLogger(__name__).warning("SME leads unavailable", exc_info=True)
+        return None, None
+
+
+def sme_regions() -> set[str]:
+    """Regions with SME leads; their sales managers get its team page."""
+    from . import leads as L
+    df, _ = get_sme_leads()
+    if df is None or "ae_region" not in df.columns:
+        return set()
+    return {r for v in df["ae_region"] for r in L.parse_regions(v)}
+
+
+def sme_ae_ids() -> set[str]:
+    """Territories with SME leads; the section is shown only to them."""
+    df, _ = get_sme_leads()
+    return set() if df is None else set(df["ae_id"].astype(str)) - {""}
+
+
 RECO_CATALOGUE = "reco_catalogue.json"
 
 
@@ -438,6 +498,11 @@ def setup_problems() -> list[str]:
                        "log calls on them. Create its own spreadsheet (e.g. "
                        "ae_call_log_BMA_East_industrial), share it with the service "
                        "account as Editor, and add its id.")
+        if secret("sme_folder_id") and not call_log_sheet_id(SME):
+            out.append("`sme_folder_id` is set but `sme_call_log_sheet_id` is not — "
+                       "AEs can see the SME leads but cannot log calls on them. Create "
+                       "its own spreadsheet (e.g. ae_call_log_SME_B2B), share it with "
+                       "the service account as Editor, and add its id.")
     if not admin_emails():
         out.append("`admin_emails` is empty — nobody can approve accounts.")
     return out
@@ -453,6 +518,7 @@ LOCAL_CALL_LOG = LOCAL_DIR / ".local_call_log.json"
 # m1 experiment's log stays exactly what its analysis expects.
 MAIN = "main"
 INDUSTRIAL = "industrial"
+SME = "sme"
 
 
 def call_log_sheet_id(section: str = MAIN) -> str:
@@ -462,9 +528,10 @@ def call_log_sheet_id(section: str = MAIN) -> str:
     will be shared with whoever runs the analysis. Falling back to one sheet
     would quietly hand out the hashes with it, so an unset id disables logging
     instead -- loud and safe rather than silent and wrong. For the same reason
-    the industrial section never falls back to the main call log.
+    no other section ever falls back to the main call log.
     """
-    name = "industrial_call_log_sheet_id" if section == INDUSTRIAL else "call_log_sheet_id"
+    name = {INDUSTRIAL: "industrial_call_log_sheet_id",
+            SME: "sme_call_log_sheet_id"}.get(section, "call_log_sheet_id")
     return str(secret(name, "") or "")
 
 

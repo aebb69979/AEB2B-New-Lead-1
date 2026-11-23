@@ -59,6 +59,12 @@ def _status(p: dict) -> str:
 
 
 view = mine[L.DISPLAY].copy()
+# The SME list has no phone numbers (the customer is in CCP+); its biggest
+# number is what the customer already bills with True.
+if "sme_bill_total" in mine.columns:
+    view = view.drop(columns="phone")
+    view.insert(2, "billed", pd.to_numeric(mine["sme_bill_total"].str.replace(",", ""),
+                                           errors="coerce"))
 # New / Existing from the batch's final file; no file, no column and no filter.
 company_status = V.company_status(meta)
 if company_status:
@@ -135,6 +141,9 @@ event = st.dataframe(
                  "Blank until someone has said."),
         "registration_number": st.column_config.TextColumn("Business ID", width="medium"),
         "phone": st.column_config.TextColumn("Phone", width="small"),
+        "billed": st.column_config.NumberColumn(
+            "Billed (THB)", width="small", format="localized",
+            help="What the customer bills with True today, all services."),
         "verified": st.column_config.CheckboxColumn(
             "Verified", width="small",
             help="Ticked when this number was read off a public listing and the "

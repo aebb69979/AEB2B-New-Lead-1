@@ -255,9 +255,12 @@ def _team(default: bool = False, url_path: str | None = None):
                    default=default, url_path=url_path)
 
 
-# The BMA-East industrial list's own pages, under their own URLs.
+# The BMA-East industrial list's and the SME list's own pages, under their own URLs.
 INDUSTRIAL_PATHS = ("industrial_leads", "industrial_company", "industrial_team")
+SME_PATHS = ("sme_leads", "sme_company", "sme_team")
 DBD = "DBD leads"
+INDUSTRIAL_SECTION = "BMA-East industrial"
+SME_SECTION = "SME B2B leads"
 
 
 # The same two page files serve each lead source under its own URL; the
@@ -268,9 +271,12 @@ if is_manager and not admin_view:
     # A manager gets the team page and nothing else. The AE pages would only
     # say "no territory" -- a manager has no ae_id -- so offering them is noise.
     pages = {DBD: [_team(default=True)]}
-    # Its own team page for the regions the industrial list covers.
-    if set(L.parse_regions(account.get("regions"))) & boot.industrial_regions():
-        pages["BMA-East industrial"] = [_team(url_path="industrial_team")]
+    _mine = set(L.parse_regions(account.get("regions")))
+    # Its own team page for each list that covers one of the manager's regions.
+    if _mine & boot.industrial_regions():
+        pages[INDUSTRIAL_SECTION] = [_team(url_path="industrial_team")]
+    if _mine & boot.sme_regions():
+        pages[SME_SECTION] = [_team(url_path="sme_team")]
 else:
     # One section, not a heading per page: "Summary" and "Per-company" each
     # over a single item read as clutter, not structure.
@@ -281,24 +287,37 @@ else:
     }
     if admin_view:
         pages[DBD].append(_team())
+    _ids = set(L.parse_ae_ids(account.get("ae_id")))
     # The BMA-East industrial list: only for territories that have leads in it
     # (and administrators), so nobody else sees a menu of empty pages.
-    if admin_view or set(L.parse_ae_ids(account.get("ae_id"))) & boot.industrial_ae_ids():
+    if admin_view or _ids & boot.industrial_ae_ids():
         _company[boot.INDUSTRIAL] = st.Page(
             "app_pages/per_company.py", title="Company view", icon=":material/apartment:",
             url_path="industrial_company")
-        pages["BMA-East industrial"] = [
+        pages[INDUSTRIAL_SECTION] = [
             st.Page("app_pages/my_leads.py", title="My leads", icon=":material/factory:",
                     url_path="industrial_leads"),
             _company[boot.INDUSTRIAL]]
         if admin_view:
-            pages["BMA-East industrial"].append(_team(url_path="industrial_team"))
+            pages[INDUSTRIAL_SECTION].append(_team(url_path="industrial_team"))
+    # The SME B2B list, on the same rule.
+    if admin_view or _ids & boot.sme_ae_ids():
+        _company[boot.SME] = st.Page(
+            "app_pages/per_company.py", title="Company view", icon=":material/apartment:",
+            url_path="sme_company")
+        pages[SME_SECTION] = [
+            st.Page("app_pages/my_leads.py", title="My leads", icon=":material/storefront:",
+                    url_path="sme_leads"),
+            _company[boot.SME]]
+        if admin_view:
+            pages[SME_SECTION].append(_team(url_path="sme_team"))
 if admin_view:
     pages["Admin"] = [st.Page("app_pages/admin.py", title="Accounts",
                               icon=":material/admin_panel_settings:")]
 
 nav = st.navigation(pages)
-section = boot.INDUSTRIAL if nav.url_path in INDUSTRIAL_PATHS else boot.MAIN
+section = (boot.INDUSTRIAL if nav.url_path in INDUSTRIAL_PATHS
+           else boot.SME if nav.url_path in SME_PATHS else boot.MAIN)
 if st.session_state.get("section", section) != section:
     # Position, filters and the ?lead= deep link belong to one source; carried
     # across they would land on the wrong company or on nothing at all.
@@ -333,7 +352,7 @@ with st.sidebar:
     # Newest first, and the newest is the default. Earlier months stay available
     # so a batch does not disappear from under an AE the moment the next one is
     # published -- unfinished work would go with it.
-    # The industrial list is one file, not monthly batches.
+    # The industrial and SME lists are one file each, not monthly batches.
     _months = boot.get_months() if section == boot.MAIN else []
     if _months:
         _labels = boot.month_options(_months)

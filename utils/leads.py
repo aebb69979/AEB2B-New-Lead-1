@@ -501,3 +501,47 @@ def industrial_status(df: pd.DataFrame) -> dict[str, str]:
         return {}
     return {str(i): s for i, s in zip(df["lead_id"], df["Company Status"])
             if s in COMPANY_STATUSES}
+
+
+# --------------------------------------------------------------------------
+# the SME B2B list (tools/build_sme_final.py)
+# --------------------------------------------------------------------------
+# A third lead source with its own call log: existing SMB customers handed from
+# the Inside Sales & Retention team to the Geo AEs, mapped to territories with
+# the same crosswalk as the monthly batches. It carries no phone numbers -- the
+# customer is already in CCP+ -- and its billing columns keep an `sme_` name,
+# shown in the Company view's SME customer box. The current owner columns of
+# the source sheet name employees and are never written to the file.
+# Published as `sme_b2b_leads_<date>_final.csv`; the newest date wins. Progress
+# is keyed on lead_id (SME-<Business ID>), which a rebuild keeps.
+SME_RE = re.compile(r"^sme_b2b_leads(?:_(\d{4}-\d{2}-\d{2}))?_final\.csv$")
+SME_LOADABLE = ["lead_id", "registration_number", "company_name", "business_description",
+                "district", "province", "ae_id", "ae_name", "ae_region", "display_order"]
+
+
+def sme_sort_key(name: str) -> tuple[str] | None:
+    """('2026-11-06',) for a dated SME file, ('',) undated, None otherwise."""
+    m = SME_RE.match(name or "")
+    return (m.group(1) or "",) if m else None
+
+
+def find_sme(service_account_info: dict, folder_id: str) -> dict | None:
+    """The newest SME lead file in the folder, or None."""
+    sess = _session(service_account_info)
+    r = sess.get(DRIVE_FILES, params={
+        "q": f"'{folder_id}' in parents and trashed = false",
+        "fields": "files(id,name,modifiedTime)", "pageSize": 200,
+        "supportsAllDrives": True, "includeItemsFromAllDrives": True})
+    r.raise_for_status()
+    files = [f for f in r.json().get("files", []) if sme_sort_key(f["name"])]
+    return max(files, key=lambda f: (sme_sort_key(f["name"]), f["modifiedTime"]), default=None)
+
+
+def read_sme_bytes(raw: bytes) -> pd.DataFrame:
+    """The SME file on the snapshot's column names, plus its `sme_` columns."""
+    df = pd.read_csv(io.BytesIO(raw), dtype=str, keep_default_na=False, encoding="utf-8-sig",
+                     usecols=lambda c: c in SME_LOADABLE or str(c).startswith("sme_"))
+    for c in DISPLAY:
+        if c not in df.columns:
+            df[c] = ""
+    return _check(df)

@@ -200,7 +200,8 @@ st.caption(" · ".join([x for x in [str(lead.get("name_en", "")).strip()] + sub 
 def _rows(pairs):
     """Only the fields that actually have a value. A screen of 'N/A' hides the
     three fields that matter."""
-    return [(k, str(v).strip()) for k, v in pairs if str(v).strip() and str(v) != "nan"]
+    return [(k, str(v).strip()) for k, v in pairs
+            if v is not None and str(v).strip() and str(v) != "nan"]
 
 
 def _money(v):
@@ -221,7 +222,9 @@ with left:
                      ("Facebook", lead.get("facebook"))])
         for k, v in got:
             st.markdown(f":gray[{k}] · **{v}**" if k == "Phone" else f":gray[{k}] · {v}")
-        if not got:
+        if not got and V.section() == boot.SME:
+            st.caption("เป็นลูกค้าทรูอยู่แล้ว: ค้นหาข้อมูลติดต่อใน CCP+ ด้วย Business ID")
+        elif not got:
             st.caption("No contact details found for this company.")
         # Where the number came from. A number read off a live Business Profile
         # and a number the model recalled are worth different amounts of
@@ -267,6 +270,45 @@ if "ind_factory_address" in lead:
                             lead.get("ind_plot")),
                            ("Area", area if str(lead.get("ind_sqm", "")).strip() else "")]):
             st.markdown(f":gray[{k}] · {v}")
+
+# The SME list's own columns: who the customer is to True today.
+SME_BILLS = [("Mobile", "sme_bill_mobile"), ("Broadband", "sme_bill_broadband"),
+             ("Corpnet", "sme_bill_corpnet"), ("Data service", "sme_bill_data_service"),
+             ("Fixed line", "sme_bill_fixed_line"), ("Bulk SMS", "sme_bill_bulk_sms"),
+             ("Corporate solutions", "sme_bill_corpsol"), ("ICT service", "sme_bill_ict"),
+             ("IoT", "sme_bill_iot"), ("Cyber security", "sme_bill_cyber"),
+             ("Devices / ICT equipment", "sme_bill_device"),
+             ("TrueVisions", "sme_bill_truevisions"), ("Other", "sme_bill_other")]
+
+
+def _amount(v) -> float:
+    try:
+        return float(str(v).replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+if "sme_bill_total" in lead:
+    with st.container(border=True):
+        st.markdown("**:material/receipt_long: SME customer**")
+        for k, v in _rows([("Customer size", lead.get("sme_size")),
+                           ("Grade", lead.get("sme_grade")),
+                           ("Company income", _money(lead.get("sme_income"))),
+                           ("Company profit", _money(lead.get("sme_profit"))),
+                           ("Non-B2B", "Yes" if str(lead.get("sme_non_b2b", "")).strip() == "Y"
+                            else "")]):
+            st.markdown(f":gray[{k}] · {v}")
+        bills = [(k, _amount(lead.get(c))) for k, c in SME_BILLS]
+        bills = [(k, a) for k, a in bills if a > 0]
+        if bills:
+            st.markdown(f":gray[Billed with True] · **{_money(lead.get('sme_bill_total'))}**")
+            st.markdown("\n".join(f"- {k} · {a:,.0f} THB"
+                                   for k, a in sorted(bills, key=lambda x: -x[1])))
+            missing = [k for k, _ in SME_BILLS[:6] if k not in dict(bills)]
+            if missing:
+                st.caption("Not billed yet: " + ", ".join(missing))
+        else:
+            st.caption("No billing recorded.")
 
 desc = str(lead.get("business_description", "")).strip()
 if desc and desc != "nan":
