@@ -280,40 +280,46 @@ if is_manager and not admin_view:
 else:
     # One section, not a heading per page: "Summary" and "Per-company" each
     # over a single item read as clutter, not structure.
-    pages = {
-        DBD: [st.Page("app_pages/my_leads.py", title="My leads",
-                      icon=":material/format_list_bulleted:", default=True),
-              _company[boot.MAIN]],
-    }
-    if admin_view:
-        pages[DBD].append(_team())
+    # An administrator has no territory, so My leads / Company view would only
+    # say so: their sections are the team pages. (View as an AE brings them back.)
     _ids = set(L.parse_ae_ids(account.get("ae_id")))
+    pages = {}
+    if not admin_view:
+        pages[DBD] = [st.Page("app_pages/my_leads.py", title="My leads",
+                              icon=":material/format_list_bulleted:", default=True),
+                      _company[boot.MAIN]]
+    else:
+        pages[DBD] = [_team(default=True)]
     # The BMA-East industrial list: only for territories that have leads in it
     # (and administrators), so nobody else sees a menu of empty pages.
     if admin_view or _ids & boot.industrial_ae_ids():
         _company[boot.INDUSTRIAL] = st.Page(
             "app_pages/per_company.py", title="Company view", icon=":material/apartment:",
             url_path="industrial_company")
-        pages[INDUSTRIAL_SECTION] = [
-            st.Page("app_pages/my_leads.py", title="My leads", icon=":material/factory:",
-                    url_path="industrial_leads"),
-            _company[boot.INDUSTRIAL]]
         if admin_view:
-            pages[INDUSTRIAL_SECTION].append(_team(url_path="industrial_team"))
+            pages[INDUSTRIAL_SECTION] = [_team(url_path="industrial_team")]
+        else:
+            pages[INDUSTRIAL_SECTION] = [
+                st.Page("app_pages/my_leads.py", title="My leads", icon=":material/factory:",
+                        url_path="industrial_leads"),
+                _company[boot.INDUSTRIAL]]
     # The SME B2B list, on the same rule.
     if admin_view or _ids & boot.sme_ae_ids():
         _company[boot.SME] = st.Page(
             "app_pages/per_company.py", title="Company view", icon=":material/apartment:",
             url_path="sme_company")
-        pages[SME_SECTION] = [
-            st.Page("app_pages/my_leads.py", title="My leads", icon=":material/storefront:",
-                    url_path="sme_leads"),
-            _company[boot.SME]]
         if admin_view:
-            pages[SME_SECTION].append(_team(url_path="sme_team"))
+            pages[SME_SECTION] = [_team(url_path="sme_team")]
+        else:
+            pages[SME_SECTION] = [
+                st.Page("app_pages/my_leads.py", title="My leads", icon=":material/storefront:",
+                        url_path="sme_leads"),
+                _company[boot.SME]]
 if admin_view:
     pages["Admin"] = [st.Page("app_pages/admin.py", title="Accounts",
-                              icon=":material/admin_panel_settings:")]
+                              icon=":material/admin_panel_settings:"),
+                      st.Page("app_pages/executive.py", title="Executive summary",
+                              icon=":material/monitoring:", url_path="executive")]
 
 nav = st.navigation(pages)
 section = (boot.INDUSTRIAL if nav.url_path in INDUSTRIAL_PATHS
